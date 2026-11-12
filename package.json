@@ -1,0 +1,31 @@
+{
+  "name": "aethermart-ecommerce",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:shared": "npm run build --workspace=@ecommerce/shared",
+    "dev:api": "npm run build:shared && npm run dev --workspace=@ecommerce/api",
+    "dev:web": "npm run build:shared && npm run dev --workspace=@ecommerce/web",
+    "dev": "concurrently -n SHARED,API,WEB -c cyan,green,magenta \"npm run dev --workspace=@ecommerce/shared\" \"npm run dev --workspace=@ecommerce/api\" \"npm run dev --workspace=@ecommerce/web\"",
+    "build": "npm run build:shared && npm run build --workspace=@ecommerce/api && npm run build --workspace=@ecommerce/web",
+    "test": "npm test --workspace=@ecommerce/api",
+    "db:generate": "npm run prisma:generate --workspace=@ecommerce/api",
+    "db:migrate": "npm run prisma:migrate --workspace=@ecommerce/api",
+    "db:push": "npm run prisma:push --workspace=@ecommerce/api",
+    "db:seed": "npm run prisma:seed --workspace=@ecommerce/api",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "@neon/config": "^1.14.0",
+    "@neon/env": "^2.1.3"
+  }
+}
