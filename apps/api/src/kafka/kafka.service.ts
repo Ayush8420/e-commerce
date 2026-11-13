@@ -1,13 +1,99 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { KAFKA_TOPICS } from '@ecommerce/shared';
+import * as fs from 'fs';
 import { Consumer, Kafka, logLevel, Partitioners, Producer, SASLOptions } from 'kafkajs';
 import * as net from 'net';
+import * as tls from 'tls';
 
 export type KafkaMessageHandler = (
   payload: Record<string, unknown>,
   rawKey: string | null,
 ) => Promise<void>;
+
+export function resolveCertContent(inline?: string, filePath?: string): string | undefined {
+  if (inline && inline.trim().length > 0) {
+    return inline.includes('\\n') ? inline.replace(/\\n/g, '\n') : inline;
+  }
+  if (filePath && filePath.trim().length > 0) {
+    try {
+      if (fs.existsSync(filePath.trim())) {
+        return fs.readFileSync(filePath.trim(), 'utf-8');
+      }
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+export function buildKafkaSslConfig(configReader: {
+  get: <T = string>(key: string, defaultValue?: T) => T | undefined;
+}): boolean | tls.ConnectionOptions {
+  const sslEnabled = configReader.get<string>('KAFKA_SSL', 'false') === 'true';
+  const caCert = resolveCertContent(
+    configReader.get<string>('KAFKA_CA_CERT'),
+    configReader.get<string>('KAFKA_CA_PATH'),
+  );
+  const clientCert = resolveCertContent(
+    configReader.get<string>('KAFKA_CLIENT_CERT'),
+    configReader.get<string>('KAFKA_CLIENT_CERT_PATH'),
+  );
+  const clientKey = resolveCertContent(
+    configReader.get<string>('KAFKA_CLIENT_KEY'),
+    configReader.get<string>('KAFKA_CLIENT_KEY_PATH'),
+  );
+  const rejectUnauthorized =
+    configReader.get<string>('KAFKA_SSL_REJECT_UNAUTHORIZED', 'true') !== 'false';
+
+  const saslUsername = (configReader.get<string>('KAFKA_USERNAME', '') || '').trim();
+  const saslPassword = (configReader.get<string>('KAFKA_PASSWORD', '') || '').trim();
+  const hasSasl = Boolean(saslUsername && saslPassword);
+
+  if (caCert || clientCert || clientKey) {
+    const tlsOptions: tls.ConnectionOptions = {
+      rejectUnauthorized,
+    };
+    if (caCert) {
+      tlsOptions.ca = [caCert];
+    }
+    if (clientCert) {
+      tlsOptions.cert = clientCert;
+    }
+    if (clientKey) {
+      tlsOptions.key = clientKey;
+    }
+    return tlsOptions;
+  }
+
+  if (sslEnabled || hasSasl) {
+    if (!rejectUnauthorized) {
+      return { rejectUnauthorized: false };
+    }
+    return true;
+  }
+
+  return false;
+}
+
+export function buildKafkaSaslConfig(configReader: {
+  get: <T = string>(key: string, defaultValue?: T) => T | undefined;
+}): SASLOptions | undefined {
+  const saslMechanism = (configReader.get<string>('KAFKA_SASL_MECHANISM', '') || '').trim().toLowerCase();
+  const saslUsername = (configReader.get<string>('KAFKA_USERNAME', '') || '').trim();
+  const saslPassword = (configReader.get<string>('KAFKA_PASSWORD', '') || '').trim();
+
+  if (!saslUsername || !saslPassword) {
+    return undefined;
+  }
+
+  if (saslMechanism === 'scram-sha-512') {
+    return { mechanism: 'scram-sha-512', username: saslUsername, password: saslPassword };
+  } else if (saslMechanism === 'plain') {
+    return { mechanism: 'plain', username: saslUsername, password: saslPassword };
+  }
+  return { mechanism: 'scram-sha-256', username: saslUsername, password: saslPassword };
+}
 
 @Injectable()
 export class KafkaService implements OnModuleInit, OnModuleDestroy {
@@ -30,32 +116,20 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
       .filter(Boolean);
     const clientId = this.config.get<string>('KAFKA_CLIENT_ID', 'ecommerce-api');
     this.groupPrefix = this.config.get<string>('KAFKA_GROUP_PREFIX', 'ecommerce');
-    const sslEnabled = this.config.get<string>('KAFKA_SSL', 'false') === 'true';
-    const saslMechanism = this.config.get<string>('KAFKA_SASL_MECHANISM', '').trim().toLowerCase();
-    const saslUsername = this.config.get<string>('KAFKA_USERNAME', '').trim();
-    const saslPassword = this.config.get<string>('KAFKA_PASSWORD', '').trim();
 
-    let saslConfig: SASLOptions | undefined;
-    if (saslUsername && saslPassword) {
-      if (saslMechanism === 'scram-sha-512') {
-        saslConfig = { mechanism: 'scram-sha-512', username: saslUsername, password: saslPassword };
-      } else if (saslMechanism === 'plain') {
-        saslConfig = { mechanism: 'plain', username: saslUsername, password: saslPassword };
-      } else {
-        saslConfig = { mechanism: 'scram-sha-256', username: saslUsername, password: saslPassword };
-      }
-    }
+    const sslConfig = buildKafkaSslConfig(this.config);
+    const saslConfig = buildKafkaSaslConfig(this.config);
 
     this.kafka = new Kafka({
       clientId,
       brokers: this.brokers,
-      ssl: sslEnabled || Boolean(saslConfig),
+      ssl: sslConfig,
       ...(saslConfig ? { sasl: saslConfig } : {}),
       logLevel: logLevel.WARN,
-      connectionTimeout: 3000,
+      connectionTimeout: 5000,
       retry: {
         initialRetryTime: 300,
-        retries: 2,
+        retries: 3,
       },
     });
     this.producer = this.kafka.producer({
@@ -88,7 +162,7 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
         const timer = setTimeout(() => {
           socket.destroy();
           resolve(false);
-        }, 600);
+        }, 1500);
         socket.once('connect', () => {
           clearTimeout(timer);
           socket.destroy();

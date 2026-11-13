@@ -10,7 +10,9 @@
     "prisma:generate": "node scripts/prisma-env.cjs generate",
     "prisma:migrate": "node scripts/prisma-env.cjs migrate dev",
     "prisma:push": "node scripts/prisma-env.cjs db push",
-    "prisma:seed": "tsx --env-file=../../.env prisma/seed.ts"
+    "prisma:seed": "tsx --env-file=../../.env prisma/seed.ts",
+    "kafka:create-topics": "tsx scripts/create-topics.ts",
+    "opensearch:reindex": "tsx scripts/reindex-opensearch.ts"
   },
   "dependencies": {
     "@ecommerce/shared": "*",

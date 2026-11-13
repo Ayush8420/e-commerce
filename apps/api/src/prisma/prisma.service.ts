@@ -14,6 +14,10 @@ export function buildPrismaDatasourceUrl(rawUrl?: string): string | undefined {
     if (parsed.hostname.includes('.neon.tech') && !parsed.searchParams.has('connect_timeout')) {
       parsed.searchParams.set('connect_timeout', '15');
     }
+    // Aiven PostgreSQL requires sslmode=require
+    if (parsed.hostname.includes('aivencloud.com') && !parsed.searchParams.has('sslmode')) {
+      parsed.searchParams.set('sslmode', 'require');
+    }
     return parsed.toString();
   } catch {
     return rawUrl;

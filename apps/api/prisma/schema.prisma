@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_URL_UNPOOLED")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -119,6 +118,7 @@ model Product {
   reviews        Review[]
   cartItems      CartItem[]
   orderItems     OrderItem[]
+  inventories    Inventory[]
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -181,11 +181,49 @@ model CartItem {
   @@unique([cartId, productId])
 }
 
+model Store {
+  id          String      @id @default(cuid())
+  name        String
+  code        String      @unique
+  city        String
+  state       String
+  address     String
+  latitude    Float
+  longitude   Float
+  isActive    Boolean     @default(true)
+  inventories Inventory[]
+  orders      Order[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([city])
+  @@index([isActive])
+}
+
+model Inventory {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, storeId])
+  @@index([storeId])
+  @@index([productId])
+  @@index([quantity])
+}
+
 model Order {
   id                String               @id @default(cuid())
   orderNumber       String               @unique
   userId            String
   user              User                 @relation(fields: [userId], references: [id])
+  storeId           String?
+  store             Store?               @relation(fields: [storeId], references: [id])
+  city              String?
   status            OrderStatus          @default(PENDING_PAYMENT)
   paymentMethod     PaymentMethod
   paymentStatus     PaymentStatus        @default(PENDING)
@@ -204,6 +242,8 @@ model Order {
 
   @@index([userId, createdAt])
   @@index([status])
+  @@index([storeId])
+  @@index([city])
 }
 
 model OrderItem {
@@ -285,5 +325,16 @@ model AnalyticsEvent {
 
   @@index([type, occurredAt])
   @@index([productId])
+}
+
+model ProcessedEvent {
+  id            String   @id @default(cuid())
+  consumerGroup String
+  eventId       String
+  eventType     String
+  processedAt   DateTime @default(now())
+
+  @@unique([consumerGroup, eventId])
+  @@index([processedAt])
 }
 

@@ -17,6 +17,8 @@
     "db:migrate": "npm run prisma:migrate --workspace=@ecommerce/api",
     "db:push": "npm run prisma:push --workspace=@ecommerce/api",
     "db:seed": "npm run prisma:seed --workspace=@ecommerce/api",
+    "kafka:setup": "npm run kafka:create-topics --workspace=@ecommerce/api",
+    "opensearch:reindex": "npm run opensearch:reindex --workspace=@ecommerce/api",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down"
   },
