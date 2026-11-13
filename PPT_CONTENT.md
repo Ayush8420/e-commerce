@@ -200,3 +200,4 @@ A unified omnichannel storefront that connects India’s physical store branches
 
 ### **Strong Closing Pitch**
 > *"AetherMart bridges the gap between India's physical retail backbone and modern digital scale. By uniting Aiven PostgreSQL for atomic truth, Aiven Kafka for resilient event streaming, and Aiven OpenSearch for sub-millisecond discovery, we have built a storefront that is fast, never oversells, and delivers a frictionless shopping experience. Thank you!"*
+

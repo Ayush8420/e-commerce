@@ -3,20 +3,23 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ProductDocument, SearchResponse } from '@ecommerce/shared';
-import { ArrowRight, Mail, QrCode, Search, ShieldCheck, Zap } from 'lucide-react';
+import { ArrowRight, Mail, MapPin, QrCode, Search, ShieldCheck, Zap } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
+import { useStore } from '@/components/providers/StoreProvider';
 import { apiFetch, CategorySummary } from '@/lib/api';
 
 export default function HomePage() {
+  const { selectedCity } = useStore();
   const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [featured, setFeatured] = useState<ProductDocument[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
+    const cityParam = selectedCity ? `&city=${encodeURIComponent(selectedCity)}` : '';
     Promise.all([
       apiFetch<CategorySummary[]>('/categories', { skipAuthRefresh: true }).catch(() => []),
-      apiFetch<SearchResponse>('/search?limit=8&sort=rating_desc', { skipAuthRefresh: true }).catch(
+      apiFetch<SearchResponse>(`/search?limit=8&sort=rating_desc${cityParam}`, { skipAuthRefresh: true }).catch(
         () => ({ items: [] as ProductDocument[] }),
       ),
     ])
@@ -31,7 +34,7 @@ export default function HomePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [selectedCity]);
 
   return (
     <div>
@@ -52,13 +55,13 @@ export default function HomePage() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href="/products"
+                href={`/products?city=${encodeURIComponent(selectedCity)}`}
                 className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-gray-900 hover:bg-stone-100"
               >
-                Explore Catalog <ArrowRight className="h-4 w-4" />
+                Explore {selectedCity} Catalog <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
-                href="/products?category=mechanical-keyboards"
+                href={`/products?category=mechanical-keyboards&city=${encodeURIComponent(selectedCity)}`}
                 className="inline-flex items-center gap-2 rounded-full border border-white/25 px-6 py-3 text-sm font-semibold text-white hover:bg-white/10"
               >
                 Shop Keyboards
@@ -134,13 +137,25 @@ export default function HomePage() {
 
       {/* Featured Products */}
       <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6">
-        <div className="flex items-end justify-between">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-gray-900">Featured Gear</h2>
-            <p className="mt-1 text-sm text-stone-600">Top-rated essentials ready for instant UPI checkout</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold tracking-tight text-gray-900">Featured Gear</h2>
+              {selectedCity && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 border border-indigo-200">
+                  <MapPin className="h-3 w-3" /> {selectedCity} Stores
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-stone-600">
+              Top-rated essentials available locally at <strong className="text-gray-900">{selectedCity}</strong> branches
+            </p>
           </div>
-          <Link href="/products" className="text-sm font-semibold text-indigo-700 hover:underline">
-            Filter &amp; search all &rarr;
+          <Link
+            href={`/products?city=${encodeURIComponent(selectedCity)}`}
+            className="text-sm font-semibold text-indigo-700 hover:underline"
+          >
+            Filter &amp; search in {selectedCity} &rarr;
           </Link>
         </div>
 

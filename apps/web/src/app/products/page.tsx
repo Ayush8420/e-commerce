@@ -3,16 +3,27 @@
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { formatInrFromPaise, SearchResponse } from '@ecommerce/shared';
-import { Filter, MapPin, Search, SlidersHorizontal, X, Zap } from 'lucide-react';
+import { Filter, MapPin, Navigation, RefreshCw, Search, SlidersHorizontal, X, Zap } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
+import { useStore } from '@/components/providers/StoreProvider';
 import { apiFetch } from '@/lib/api';
 
 function CatalogContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const {
+    selectedCity: storeCity,
+    setSelectedCity: setStoreCity,
+    availableCities,
+    detectLocation,
+    isDetectingLocation,
+  } = useStore();
+
+  const urlCity = searchParams.get('city');
+  const activeCity = urlCity || storeCity || 'Mumbai';
 
   const [q, setQ] = useState(searchParams.get('q') ?? '');
-  const [selectedCity, setSelectedCity] = useState(searchParams.get('city') ?? '');
+  const [selectedCity, setSelectedCity] = useState(activeCity);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     searchParams.get('category')?.split(',').filter(Boolean) ?? [],
   );
@@ -31,7 +42,8 @@ function CatalogContent() {
 
   useEffect(() => {
     setQ(searchParams.get('q') ?? '');
-    setSelectedCity(searchParams.get('city') ?? '');
+    const currentCity = searchParams.get('city') || storeCity || 'Mumbai';
+    setSelectedCity(currentCity);
     setSelectedCategories(searchParams.get('category')?.split(',').filter(Boolean) ?? []);
     setSelectedBrands(searchParams.get('brand')?.split(',').filter(Boolean) ?? []);
     setMinPrice(searchParams.get('minPrice') ?? '');
@@ -40,14 +52,15 @@ function CatalogContent() {
     setInStock(searchParams.get('inStock') === 'true');
     setSort(searchParams.get('sort') ?? 'relevance');
     setPage(Number(searchParams.get('page') ?? '1'));
-  }, [searchParams]);
+  }, [searchParams, storeCity]);
 
   const syncUrl = useCallback(
     (overrides: Record<string, string | undefined>) => {
       const next = new URLSearchParams();
+      const currentActiveCity = overrides.city !== undefined ? overrides.city : (selectedCity || storeCity || 'Mumbai');
       const merged: Record<string, string | undefined> = {
         q: q.trim() || undefined,
-        city: selectedCity || undefined,
+        city: currentActiveCity || undefined,
         category: selectedCategories.length ? selectedCategories.join(',') : undefined,
         brand: selectedBrands.length ? selectedBrands.join(',') : undefined,
         minPrice: minPrice || undefined,
@@ -64,7 +77,7 @@ function CatalogContent() {
       const qs = next.toString();
       router.push(qs ? `/products?${qs}` : '/products');
     },
-    [inStock, maxPrice, minPrice, minRating, page, q, router, selectedBrands, selectedCategories, selectedCity, sort],
+    [inStock, maxPrice, minPrice, minRating, page, q, router, selectedBrands, selectedCategories, selectedCity, sort, storeCity],
   );
 
   useEffect(() => {
@@ -72,7 +85,11 @@ function CatalogContent() {
     setLoading(true);
     const params = new URLSearchParams();
     if (searchParams.get('q')) params.set('q', searchParams.get('q')!);
-    if (searchParams.get('city')) params.set('city', searchParams.get('city')!);
+
+    // Always enforce location-scoping: filter by user's detected or selected city
+    const effectiveCity = searchParams.get('city') || storeCity || 'Mumbai';
+    params.set('city', effectiveCity);
+
     if (searchParams.get('category')) params.set('category', searchParams.get('category')!);
     if (searchParams.get('brand')) params.set('brand', searchParams.get('brand')!);
     if (searchParams.get('minPrice')) params.set('minPrice', searchParams.get('minPrice')!);
@@ -97,7 +114,7 @@ function CatalogContent() {
     return () => {
       active = false;
     };
-  }, [searchParams]);
+  }, [searchParams, storeCity]);
 
   const toggleItem = (list: string[], value: string) =>
     list.includes(value) ? list.filter((i) => i !== value) : [...list, value];
@@ -120,11 +137,10 @@ function CatalogContent() {
                   </span>
                 ) : (
                   <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[11px] ${
-                      result.searchEngine === 'demo-fallback'
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[11px] ${result.searchEngine === 'demo-fallback'
                         ? 'bg-amber-100 text-amber-800'
                         : 'bg-stone-100 text-stone-600'
-                    }`}
+                      }`}
                   >
                     engine: {result.searchEngine}
                   </span>
@@ -173,6 +189,77 @@ function CatalogContent() {
         </div>
       </div>
 
+      {/* Location-Aware Store Fulfillment Banner */}
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-white to-purple-50/40 p-4 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-xs shrink-0">
+            <MapPin className="h-5 w-5" />
+          </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700">
+                City-Aware Inventory
+              </span>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                Local Stock Active
+              </span>
+            </div>
+            <p className="text-sm font-semibold text-gray-900 mt-0.5">
+              Showing products available at{' '}
+              <span className="font-bold text-indigo-700 underline decoration-indigo-300 underline-offset-4">
+                {selectedCity || activeCity}
+              </span>{' '}
+              retail branches &amp; fulfillment hubs
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Change City Quick Select */}
+          <div className="flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs shadow-2xs">
+            <span className="text-stone-500 font-medium">Switch City:</span>
+            <select
+              value={selectedCity || activeCity}
+              onChange={(e) => {
+                const newCity = e.target.value;
+                setStoreCity(newCity);
+                setSelectedCity(newCity);
+                syncUrl({ city: newCity, page: undefined });
+              }}
+              className="bg-transparent font-bold text-indigo-950 focus:outline-none cursor-pointer"
+            >
+              {availableCities.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* GPS Auto-Detect Button */}
+          <button
+            type="button"
+            onClick={async () => {
+              const detected = await detectLocation();
+              if (detected) {
+                setSelectedCity(detected);
+                syncUrl({ city: detected, page: undefined });
+              }
+            }}
+            disabled={isDetectingLocation}
+            className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition-all cursor-pointer"
+            title="Auto-detect nearest store via GPS geolocation"
+          >
+            {isDetectingLocation ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Navigation className="h-3.5 w-3.5" />
+            )}
+            <span>{isDetectingLocation ? 'Locating...' : 'Detect GPS Location'}</span>
+          </button>
+        </div>
+      </div>
+
       <div className="mt-8 grid gap-8 lg:grid-cols-12">
         {/* Facet Sidebar */}
         <aside className="space-y-6 lg:col-span-3">
@@ -201,40 +288,40 @@ function CatalogContent() {
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedCity('');
-                        syncUrl({ city: undefined, page: undefined });
+                        setSelectedCity('Mumbai');
+                        setStoreCity('Mumbai');
+                        syncUrl({ city: 'Mumbai', page: undefined });
                       }}
                       className="text-[11px] text-stone-400 hover:text-stone-700"
                     >
-                      Clear
+                      Reset
                     </button>
                   )}
                 </div>
                 <div className="mt-2.5 space-y-1.5">
                   {result.facets.cities.map((city) => {
-                    const isCurrent = selectedCity.toLowerCase() === city.key.toLowerCase();
+                    const isCurrent = (selectedCity || '').toLowerCase() === city.key.toLowerCase();
                     return (
                       <button
                         key={city.key}
                         type="button"
                         onClick={() => {
-                          const next = isCurrent ? undefined : city.key;
-                          setSelectedCity(next ?? '');
+                          const next = city.label || city.key;
+                          setStoreCity(next);
+                          setSelectedCity(next);
                           syncUrl({ city: next, page: undefined });
                         }}
-                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition-colors text-left ${
-                          isCurrent
+                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition-colors text-left ${isCurrent
                             ? 'bg-indigo-50 font-bold text-indigo-900 border border-indigo-200'
                             : 'text-stone-700 hover:bg-stone-50'
-                        }`}
+                          }`}
                       >
                         <span className="flex items-center gap-1.5">
                           <span
-                            className={`h-2 w-2 rounded-full ${
-                              isCurrent ? 'bg-indigo-600' : 'bg-stone-300'
-                            }`}
+                            className={`h-2 w-2 rounded-full ${isCurrent ? 'bg-indigo-600' : 'bg-stone-300'
+                              }`}
                           />
-                          <span>{city.key}</span>
+                          <span className="capitalize">{city.label || city.key}</span>
                         </span>
                         <span className="font-mono text-[11px] text-stone-400">{city.count}</span>
                       </button>

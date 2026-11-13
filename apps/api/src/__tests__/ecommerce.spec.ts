@@ -405,16 +405,16 @@ describe('AuthService, Notifications & CatalogConsumer', () => {
     );
     const allRes = await openSearch.searchProducts({ limit: 8 });
     expect(allRes.searchEngine).toBe('demo-fallback');
-    expect(allRes.total).toBe(20);
+    expect(allRes.total).toBe(23);
     expect(allRes.items).toHaveLength(8);
-    expect(allRes.facets.categories.length).toBe(6);
+    expect(allRes.facets.categories.length).toBe(7);
 
     const kbRes = await openSearch.searchProducts({ category: 'mechanical-keyboards' });
     expect(kbRes.total).toBe(3);
 
     const catalog = new CatalogService(failingPrisma as never, {} as never);
     const cats = await catalog.listCategories();
-    expect(cats).toHaveLength(6);
+    expect(cats).toHaveLength(7);
     const detail = await catalog.getProductBySlug('keychron-q1-pro-qmk-aluminum');
     expect(detail.brand).toBe('Keychron');
   });

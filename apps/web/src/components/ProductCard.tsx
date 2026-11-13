@@ -7,7 +7,7 @@ import { MapPin, Plus, Star } from 'lucide-react';
 import { useStore } from './providers/StoreProvider';
 
 export function ProductCard({ product }: { product: ProductDocument }) {
-  const { addToCart } = useStore();
+  const { addToCart, selectedCity } = useStore();
   const discountPct =
     product.compareAtPaise && product.compareAtPaise > product.pricePaise
       ? Math.round(((product.compareAtPaise - product.pricePaise) / product.compareAtPaise) * 100)
@@ -55,11 +55,17 @@ export function ProductCard({ product }: { product: ProductDocument }) {
         <p className="mt-1 line-clamp-2 text-xs text-stone-500">{product.categoryName}</p>
 
         {product.availableCities && product.availableCities.length > 0 && (
-          <div className="mt-2 flex items-center gap-1 text-[11px] text-stone-500">
-            <MapPin className="h-3 w-3 text-indigo-500 shrink-0" />
-            <span className="truncate">
-              In stores: {product.availableCities.slice(0, 3).join(', ')}
-              {product.availableCities.length > 3 ? ` +${product.availableCities.length - 3}` : ''}
+          <div className="mt-2 flex items-center gap-1.5 text-[11px]">
+            <MapPin className="h-3 w-3 text-indigo-600 shrink-0" />
+            <span className="truncate font-medium">
+              {product.availableCities.some((c) => c.toLowerCase() === (selectedCity || '').toLowerCase()) ? (
+                <span className="font-semibold text-emerald-700">In stock at {selectedCity} store</span>
+              ) : (
+                <span className="text-stone-500">
+                  In stores: {product.availableCities.slice(0, 3).join(', ')}
+                  {product.availableCities.length > 3 ? ` +${product.availableCities.length - 3}` : ''}
+                </span>
+              )}
             </span>
           </div>
         )}

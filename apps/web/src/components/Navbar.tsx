@@ -12,7 +12,9 @@ import {
   LayoutDashboard,
   LogOut,
   MapPin,
+  Navigation,
   Package,
+  RefreshCw,
   Search,
   ShoppingBag,
   Sparkles,
@@ -34,8 +36,17 @@ interface Suggestion {
 
 export function Navbar() {
   const router = useRouter();
-  const { user, cart, setCartDrawerOpen, logout, selectedCity, setSelectedCity, availableCities } =
-    useStore();
+  const {
+    user,
+    cart,
+    setCartDrawerOpen,
+    logout,
+    selectedCity,
+    setSelectedCity,
+    availableCities,
+    detectLocation,
+    isDetectingLocation,
+  } = useStore();
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -81,7 +92,8 @@ export function Navbar() {
     e.preventDefault();
     setShowDropdown(false);
     const trimmed = query.trim();
-    router.push(trimmed ? `/products?q=${encodeURIComponent(trimmed)}` : '/products');
+    const cityParam = selectedCity ? `&city=${encodeURIComponent(selectedCity)}` : '';
+    router.push(trimmed ? `/products?q=${encodeURIComponent(trimmed)}${cityParam}` : `/products?city=${encodeURIComponent(selectedCity)}`);
   };
 
   return (
@@ -102,41 +114,66 @@ export function Navbar() {
         </Link>
 
         {/* Physical Store / City Quick-Picker */}
-        <div ref={cityRef} className="relative hidden md:block">
+        <div ref={cityRef} className="relative">
           <button
             type="button"
             onClick={() => setShowCityMenu(!showCityMenu)}
-            className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-800 hover:bg-stone-100 transition-all cursor-pointer"
-            title="Select your physical store city across India"
+            className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1.5 text-xs font-semibold text-stone-800 hover:bg-stone-100 transition-all cursor-pointer"
+            title="Select your physical store city across India or auto-detect via GPS"
           >
             <MapPin className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-            <span>Store: <strong className="text-gray-900">{selectedCity}</strong></span>
+            <span className="hidden sm:inline text-stone-500">Store:</span>
+            <strong className="text-gray-900">{selectedCity}</strong>
             <ChevronDown className="h-3 w-3 text-stone-400" />
           </button>
 
           {showCityMenu && (
-            <div className="absolute left-0 top-full mt-2 w-48 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl z-50 p-1.5 animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute left-0 top-full mt-2 w-52 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl z-50 p-2 animate-in fade-in zoom-in-95 duration-100">
+              {/* GPS Auto-Detect Button */}
+              <button
+                type="button"
+                onClick={async () => {
+                  const detected = await detectLocation();
+                  setShowCityMenu(false);
+                  if (detected) {
+                    router.push(`/products?city=${encodeURIComponent(detected)}`);
+                  }
+                }}
+                disabled={isDetectingLocation}
+                className="flex w-full items-center gap-2 rounded-xl bg-indigo-50 px-2.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 mb-2 border border-indigo-100 cursor-pointer transition-colors"
+              >
+                {isDetectingLocation ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-indigo-600 shrink-0" />
+                ) : (
+                  <Navigation className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                )}
+                <span>{isDetectingLocation ? 'Locating Nearest Store...' : '📍 Detect GPS Location'}</span>
+              </button>
+
               <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
-                Select Store City
+                Or Select Store City
               </div>
-              {availableCities.map((city) => (
-                <button
-                  key={city}
-                  type="button"
-                  onClick={() => {
-                    setSelectedCity(city);
-                    setShowCityMenu(false);
-                  }}
-                  className={`flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-xs font-medium text-left transition-colors cursor-pointer ${
-                    selectedCity === city
-                      ? 'bg-indigo-50 text-indigo-900 font-bold'
-                      : 'text-stone-700 hover:bg-stone-50'
-                  }`}
-                >
-                  <span>{city}</span>
-                  {selectedCity === city && <Check className="h-3.5 w-3.5 text-indigo-600" />}
-                </button>
-              ))}
+              <div className="max-h-60 overflow-y-auto space-y-0.5">
+                {availableCities.map((city) => (
+                  <button
+                    key={city}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCity(city);
+                      setShowCityMenu(false);
+                      router.push(`/products?city=${encodeURIComponent(city)}`);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-xs font-medium text-left transition-colors cursor-pointer ${
+                      selectedCity === city
+                        ? 'bg-indigo-50 text-indigo-900 font-bold'
+                        : 'text-stone-700 hover:bg-stone-50'
+                    }`}
+                  >
+                    <span>{city}</span>
+                    {selectedCity === city && <Check className="h-3.5 w-3.5 text-indigo-600" />}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -214,7 +251,8 @@ export function Navbar() {
                 type="button"
                 onClick={() => {
                   setShowDropdown(false);
-                  router.push(`/products?q=${encodeURIComponent(query.trim())}`);
+                  const cityParam = selectedCity ? `&city=${encodeURIComponent(selectedCity)}` : '';
+                  router.push(`/products?q=${encodeURIComponent(query.trim())}${cityParam}`);
                 }}
                 className="flex w-full items-center justify-between border-t border-stone-100 bg-stone-50/90 px-4 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50/80 transition-colors cursor-pointer"
               >

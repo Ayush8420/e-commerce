@@ -30,7 +30,11 @@ describe('Phase 2C & 2D: Search Fuzzy Typo Tolerance, City Availability & Consum
     (openSearch as any).client = {
       indices: { exists: vi.fn().mockResolvedValue({ body: true }) },
       search: vi.fn().mockImplementation(async ({ body }: any) => {
-        const queryText = body?.query?.bool?.must?.[0]?.bool?.should?.[0]?.multi_match?.query ?? '';
+        const shouldClause = body?.query?.bool?.must?.[0]?.bool?.should ?? [];
+        const queryText =
+          shouldClause[0]?.match_phrase?.title?.query ||
+          shouldClause.find((s: any) => s.multi_match)?.multi_match?.query ||
+          '';
         const lower = queryText.toLowerCase();
 
         let matchedProduct = null;
