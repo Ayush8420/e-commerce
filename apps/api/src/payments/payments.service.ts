@@ -172,6 +172,26 @@ export class PaymentsService {
         },
       });
 
+      if ((order.shippingAddress as any)?.fulfillmentType === 'STORE_PICKUP') {
+        await this.outbox.enqueue(tx, {
+          aggregateType: 'Order',
+          aggregateId: confirmed.id,
+          topic: KAFKA_TOPICS.ORDER_EVENTS,
+          eventType: 'order.pickup_ready',
+          payload: {
+            eventId: randomUUID(),
+            type: 'order.pickup_ready',
+            orderId: confirmed.id,
+            orderNumber: confirmed.orderNumber,
+            userId: confirmed.userId,
+            storeId: confirmed.storeId,
+            city: confirmed.city,
+            pickupStoreName: (order.shippingAddress as any)?.pickupStoreName,
+            occurredAt: new Date().toISOString(),
+          },
+        });
+      }
+
       return confirmed;
     });
 

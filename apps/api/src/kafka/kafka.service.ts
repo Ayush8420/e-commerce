@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { KAFKA_TOPICS } from '@ecommerce/shared';
+import { ConsumerGroupLag, KafkaMetricsResponse, KAFKA_TOPICS } from '@ecommerce/shared';
 import * as fs from 'fs';
 import { Consumer, Kafka, logLevel, Partitioners, Producer, SASLOptions } from 'kafkajs';
 import * as net from 'net';
@@ -333,6 +333,93 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
     };
 
     void startConsumer();
+  }
+
+  private cachedMetrics: KafkaMetricsResponse | null = null;
+  private lastMetricsFetch = 0;
+
+  async getConsumerLagMetrics(): Promise<KafkaMetricsResponse> {
+    const now = Date.now();
+    if (this.cachedMetrics && now - this.lastMetricsFetch < 3000) {
+      return this.cachedMetrics;
+    }
+
+    if (!(await this.isAnyBrokerReachable())) {
+      return {
+        status: 'disconnected',
+        groups: [],
+        totalLag: 0,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    const admin = this.kafka.admin();
+    try {
+      await admin.connect();
+
+      const monitored = [
+        { groupId: `${this.groupPrefix}-catalog`, topic: KAFKA_TOPICS.CATALOG_EVENTS },
+        { groupId: `${this.groupPrefix}-orders`, topic: KAFKA_TOPICS.ORDER_EVENTS },
+        { groupId: `${this.groupPrefix}-notifications`, topic: KAFKA_TOPICS.NOTIFICATION_EVENTS },
+      ];
+
+      const groups: ConsumerGroupLag[] = [];
+      let totalLag = 0;
+
+      for (const item of monitored) {
+        try {
+          const topicOffsets = await admin.fetchTopicOffsets(item.topic);
+          const groupOffsets = await admin.fetchOffsets({
+            groupId: item.groupId,
+            topics: [item.topic],
+          });
+
+          const topicMap = new Map<number, string>();
+          for (const to of topicOffsets) {
+            topicMap.set(to.partition, to.high);
+          }
+
+          const groupTopic = groupOffsets.find((gt) => gt.topic === item.topic);
+          if (groupTopic) {
+            for (const part of groupTopic.partitions) {
+              const high = topicMap.get(part.partition) ?? '0';
+              const cur = part.offset === '-1' ? high : part.offset;
+              const lag = Math.max(0, Number(high) - Number(cur));
+              totalLag += lag;
+
+              groups.push({
+                groupId: item.groupId,
+                topic: item.topic,
+                partition: part.partition,
+                currentOffset: cur,
+                logEndOffset: high,
+                lag,
+              });
+            }
+          }
+        } catch {
+          // Individual group might be idle or uninitialized
+        }
+      }
+
+      this.cachedMetrics = {
+        status: 'connected',
+        groups,
+        totalLag,
+        timestamp: new Date().toISOString(),
+      };
+      this.lastMetricsFetch = now;
+      return this.cachedMetrics;
+    } catch {
+      return {
+        status: 'disconnected',
+        groups: [],
+        totalLag: 0,
+        timestamp: new Date().toISOString(),
+      };
+    } finally {
+      await admin.disconnect().catch(() => undefined);
+    }
   }
 
   async isHealthy(): Promise<boolean> {

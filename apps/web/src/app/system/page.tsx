@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { formatInrFromPaise } from '@ecommerce/shared';
 import {
   Activity,
   AlertOctagon,
@@ -18,6 +19,7 @@ import {
   Server,
   ShieldAlert,
   ShieldCheck,
+  TrendingDown,
   Zap,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -36,6 +38,22 @@ interface SystemActivityItem {
   title: string;
   details: Record<string, unknown>;
   durationMs?: number;
+}
+
+interface KafkaLagMetric {
+  groupId: string;
+  topic: string;
+  partition: number;
+  currentOffset: string;
+  logEndOffset: string;
+  lag: number;
+}
+
+interface KafkaMetricsState {
+  status: string;
+  groups: KafkaLagMetric[];
+  totalLag: number;
+  timestamp: string;
 }
 
 interface StressTestResult {
@@ -60,6 +78,9 @@ export default function SystemActivityPage() {
   const [selectedService, setSelectedService] = useState<string>('ALL');
   const [isPaused, setIsPaused] = useState(false);
   const [outboxStats, setOutboxStats] = useState<{ pending: number; relayActive: boolean } | null>(null);
+  const [kafkaMetrics, setKafkaMetrics] = useState<KafkaMetricsState | null>(null);
+  const [broadcastingFlashSale, setBroadcastingFlashSale] = useState(false);
+  const [flashSaleMessage, setFlashSaleMessage] = useState<string | null>(null);
 
   // Stress test state
   const [concurrency, setConcurrency] = useState(100);
@@ -70,9 +91,49 @@ export default function SystemActivityPage() {
 
   const feedEndRef = useRef<HTMLDivElement | null>(null);
 
+  const fetchKafkaMetrics = async () => {
+    try {
+      const data = await apiFetch<KafkaMetricsState>('/system/kafka-metrics', { skipAuthRefresh: true });
+      if (data && data.groups) {
+        setKafkaMetrics(data);
+      }
+    } catch {
+      // ignore transient errors
+    }
+  };
+
+  const handleTriggerFlashSale = async (discount = 20) => {
+    setBroadcastingFlashSale(true);
+    setFlashSaleMessage(null);
+    try {
+      const res = await apiFetch<{
+        success: boolean;
+        productId: string;
+        title: string;
+        oldPricePaise: number;
+        newPricePaise: number;
+        discountPercent: number;
+      }>('/system/flash-sale', {
+        method: 'POST',
+        body: JSON.stringify({ discountPercent: discount }),
+        skipAuthRefresh: true,
+      });
+      setFlashSaleMessage(
+        `⚡ Flash sale broadcasted! "${res.title}" dropped ${res.discountPercent}% (${formatInrFromPaise(res.oldPricePaise)} → ${formatInrFromPaise(res.newPricePaise)}). Synced to OpenSearch via Kafka.`,
+      );
+      void fetchRecent();
+      void fetchKafkaMetrics();
+    } catch (err) {
+      setFlashSaleMessage(err instanceof Error ? err.message : 'Flash sale broadcast failed');
+    } finally {
+      setBroadcastingFlashSale(false);
+    }
+  };
+
   // Initial load via REST
   const fetchRecent = async () => {
     try {
+      void fetchKafkaMetrics();
       const data = await apiFetch<{
         status: string;
         timestamp: string;
@@ -440,8 +501,115 @@ export default function SystemActivityPage() {
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Oversell Concurrency Stress Test (5 cols) */}
+          {/* RIGHT COLUMN: Observability Controls, Lag Visualizer & Stress Test (5 cols) */}
           <div className="lg:col-span-5 space-y-6">
+            {/* Kafka Consumer Lag & Partition Visualizer */}
+            <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50/50 via-white to-white p-5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-600 text-white shadow-xs">
+                    <Cpu className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">Live Kafka Consumer Lag</h3>
+                    <p className="text-[11px] text-stone-500">Committed offsets vs high watermarks</p>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
+                  <span className="h-2 w-2 rounded-full bg-emerald-600 animate-pulse" />
+                  {kafkaMetrics ? `${kafkaMetrics.totalLag} msgs lag (Live)` : 'Connected'}
+                </span>
+              </div>
+
+              <div className="mt-3 divide-y divide-amber-100/80 text-xs">
+                {kafkaMetrics?.groups && kafkaMetrics.groups.length > 0 ? (
+                  Array.from(new Set(kafkaMetrics.groups.map((g) => g.groupId))).map((gid) => {
+                    const groupRows = kafkaMetrics.groups.filter((g) => g.groupId === gid);
+                    const groupLag = groupRows.reduce((acc, curr) => acc + (curr.lag || 0), 0);
+                    const topicName = groupRows[0]?.topic || '';
+                    return (
+                      <div key={gid} className="py-2.5 first:pt-1 last:pb-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs font-semibold text-gray-900">
+                            {gid}
+                          </span>
+                          <span
+                            className={`rounded px-2 py-0.5 font-mono text-[10px] font-bold ${
+                              groupLag === 0
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {groupLag === 0 ? 'Lag: 0 (Real-Time)' : `Lag: ${groupLag} msgs`}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-stone-500">
+                          <span className="font-mono text-stone-500">{topicName}</span>
+                          <span className="font-mono text-[10px] text-stone-600">
+                            {groupRows
+                              .map((p) => `P${p.partition}: [${p.currentOffset}/${p.logEndOffset}]`)
+                              .join('  ')}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="py-4 text-center text-xs text-stone-400">
+                    <RefreshCw className="mx-auto h-4 w-4 animate-spin text-stone-400 mb-1" />
+                    Querying Kafka Admin Broker offsets...
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Flash Sale / Dynamic Price Drop Kafka Broadcast */}
+            <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50/50 via-white to-white p-5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-600 text-white shadow-xs">
+                    <Zap className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">Dynamic Price Drop (Flash Sale)</h3>
+                    <p className="text-[11px] text-stone-500">Broadcasts event to Kafka &amp; OpenSearch</p>
+                  </div>
+                </div>
+                <span className="rounded bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800">
+                  EVENT-DRIVEN
+                </span>
+              </div>
+
+              <p className="mt-2 text-xs leading-relaxed text-stone-600">
+                Instantly trigger a <strong>20% discount</strong> on a catalog product. The change commits to PostgreSQL, publishes a <code>product.price_changed</code> event to Kafka <code>catalog.events</code>, and syncs OpenSearch index in sub-10ms.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => void handleTriggerFlashSale(20)}
+                disabled={broadcastingFlashSale}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-rose-700 disabled:opacity-50 cursor-pointer transition-all"
+              >
+                {broadcastingFlashSale ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    Broadcasting Price Drop to Kafka...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-3.5 w-3.5" />
+                    ⚡ Broadcast 20% Flash Sale Drop
+                  </>
+                )}
+              </button>
+
+              {flashSaleMessage && (
+                <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] font-medium text-rose-900 leading-snug">
+                  {flashSaleMessage}
+                </div>
+              )}
+            </div>
+
             <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50/40 via-white to-white p-6 shadow-md">
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
@@ -642,3 +810,4 @@ export default function SystemActivityPage() {
     </div>
   );
 }
+

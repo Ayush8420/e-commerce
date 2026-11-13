@@ -6,8 +6,11 @@ import { useRouter } from 'next/navigation';
 import { formatInrFromPaise } from '@ecommerce/shared';
 import {
   Activity,
+  Check,
+  ChevronDown,
   LayoutDashboard,
   LogOut,
+  MapPin,
   Package,
   Search,
   ShoppingBag,
@@ -28,16 +31,22 @@ interface Suggestion {
 
 export function Navbar() {
   const router = useRouter();
-  const { user, cart, setCartDrawerOpen, logout } = useStore();
+  const { user, cart, setCartDrawerOpen, logout, selectedCity, setSelectedCity, availableCities } =
+    useStore();
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showCityMenu, setShowCityMenu] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const cityRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setShowDropdown(false);
+      }
+      if (cityRef.current && !cityRef.current.contains(event.target as Node)) {
+        setShowCityMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -88,6 +97,46 @@ export function Navbar() {
             </span>
           </div>
         </Link>
+
+        {/* Physical Store / City Quick-Picker */}
+        <div ref={cityRef} className="relative hidden md:block">
+          <button
+            type="button"
+            onClick={() => setShowCityMenu(!showCityMenu)}
+            className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-800 hover:bg-stone-100 transition-all cursor-pointer"
+            title="Select your physical store city across India"
+          >
+            <MapPin className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+            <span>Store: <strong className="text-gray-900">{selectedCity}</strong></span>
+            <ChevronDown className="h-3 w-3 text-stone-400" />
+          </button>
+
+          {showCityMenu && (
+            <div className="absolute left-0 top-full mt-2 w-48 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl z-50 p-1.5 animate-in fade-in zoom-in-95 duration-100">
+              <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                Select Store City
+              </div>
+              {availableCities.map((city) => (
+                <button
+                  key={city}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCity(city);
+                    setShowCityMenu(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-xs font-medium text-left transition-colors cursor-pointer ${
+                    selectedCity === city
+                      ? 'bg-indigo-50 text-indigo-900 font-bold'
+                      : 'text-stone-700 hover:bg-stone-50'
+                  }`}
+                >
+                  <span>{city}</span>
+                  {selectedCity === city && <Check className="h-3.5 w-3.5 text-indigo-600" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div ref={wrapperRef} className="relative hidden flex-1 max-w-xl md:block">
           <form onSubmit={handleSubmit} className="relative">

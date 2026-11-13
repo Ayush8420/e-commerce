@@ -33,6 +33,18 @@ export class ShippingAddressDto {
   @IsString()
   @MinLength(2)
   country!: string;
+
+  @IsOptional()
+  @IsString()
+  fulfillmentType?: string;
+
+  @IsOptional()
+  @IsString()
+  pickupStoreId?: string;
+
+  @IsOptional()
+  @IsString()
+  pickupStoreName?: string;
 }
 
 export class CheckoutDto {
@@ -59,6 +71,10 @@ export class CheckoutDto {
   @IsOptional()
   @IsString()
   city?: string;
+
+  @IsOptional()
+  @IsIn(['HOME_DELIVERY', 'STORE_PICKUP'])
+  fulfillmentType?: 'HOME_DELIVERY' | 'STORE_PICKUP';
 }
 
 export class RetryUpiDto {

@@ -10,6 +10,20 @@ import {
 } from '@/lib/api';
 
 const GUEST_CART_KEY = 'aethermart_guest_cart_v1';
+const CITY_STORAGE_KEY = 'aethermart_selected_city';
+
+export const INDIAN_CITIES = [
+  'Mumbai',
+  'Bengaluru',
+  'Delhi',
+  'Pune',
+  'Hyderabad',
+  'Chennai',
+  'Kolkata',
+  'Ahmedabad',
+] as const;
+
+export type IndianCity = (typeof INDIAN_CITIES)[number];
 
 interface ToastMessage {
   id: string;
@@ -20,6 +34,9 @@ interface ToastMessage {
 interface StoreContextValue {
   user: AuthUser | null;
   authLoading: boolean;
+  selectedCity: string;
+  setSelectedCity: (city: string) => void;
+  availableCities: readonly string[];
   cart: CartResponse;
   cartDrawerOpen: boolean;
   setCartDrawerOpen: (open: boolean) => void;
@@ -42,9 +59,26 @@ const StoreContext = createContext<StoreContextValue | undefined>(undefined);
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [selectedCity, setSelectedCityState] = useState<string>('Mumbai');
   const [cart, setCart] = useState<CartResponse>(emptyCart);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem(CITY_STORAGE_KEY);
+      if (saved) {
+        setSelectedCityState(saved);
+      }
+    }
+  }, []);
+
+  const setSelectedCity = useCallback((city: string) => {
+    setSelectedCityState(city);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(CITY_STORAGE_KEY, city);
+    }
+  }, []);
 
   const notify = useCallback((text: string, tone: ToastMessage['tone'] = 'info') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -268,6 +302,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         authLoading,
+        selectedCity,
+        setSelectedCity,
+        availableCities: INDIAN_CITIES,
         cart,
         cartDrawerOpen,
         setCartDrawerOpen,

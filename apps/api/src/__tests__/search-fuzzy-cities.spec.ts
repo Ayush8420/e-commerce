@@ -234,3 +234,4 @@ describe('Phase 2C & 2D: Search Fuzzy Typo Tolerance, City Availability & Consum
     expect(syncProductById).toHaveBeenCalledTimes(1); // Skipped duplicate!
   });
 });
+

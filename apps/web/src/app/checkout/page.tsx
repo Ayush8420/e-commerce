@@ -7,12 +7,16 @@ import { formatInrFromPaise, UPI_VPA_REGEX } from '@ecommerce/shared';
 import {
   AlertCircle,
   CheckCircle2,
+  Clock,
   CreditCard,
   ExternalLink,
   Lock,
+  MapPin,
   QrCode,
   ShieldCheck,
   Smartphone,
+  Store,
+  Truck,
 } from 'lucide-react';
 import { useStore } from '@/components/providers/StoreProvider';
 import { apiFetch, OrderView, UpiPaymentPayload } from '@/lib/api';
@@ -20,7 +24,11 @@ import { apiFetch, OrderView, UpiPaymentPayload } from '@/lib/api';
 function CheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, authLoading, cart, reloadCart, notify } = useStore();
+  const { user, authLoading, cart, reloadCart, notify, selectedCity } = useStore();
+
+  const [fulfillmentType, setFulfillmentType] = useState<'HOME_DELIVERY' | 'STORE_PICKUP'>('HOME_DELIVERY');
+  const [stores, setStores] = useState<Array<{ id: string; name: string; code: string; city: string; address: string }>>([]);
+  const [selectedStoreId, setSelectedStoreId] = useState<string>('');
 
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -52,6 +60,25 @@ function CheckoutContent() {
   }, [user, fullName]);
 
   useEffect(() => {
+    apiFetch<Array<{ id: string; name: string; code: string; city: string; address: string }>>(
+      '/stores',
+      { skipAuthRefresh: true },
+    )
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setStores(data);
+          const inCity = data.find((s) => s.city.toLowerCase() === selectedCity.toLowerCase());
+          if (inCity) {
+            setSelectedStoreId(inCity.id);
+          } else if (data.length > 0) {
+            setSelectedStoreId(data[0].id);
+          }
+        }
+      })
+      .catch(() => undefined);
+  }, [selectedCity]);
+
+  useEffect(() => {
     if (!upiPayment) return;
     const timer = setInterval(() => {
       setCountdownSec((prev) => (prev > 0 ? prev - 1 : 0));
@@ -59,8 +86,15 @@ function CheckoutContent() {
     return () => clearInterval(timer);
   }, [upiPayment]);
 
+  const isStorePickup = fulfillmentType === 'STORE_PICKUP';
+  const selectedStore = stores.find((s) => s.id === selectedStoreId);
   const afterDiscount = Math.max(0, cart.subtotalPaise - discountPaise);
-  const shippingPaise = cart.items.length === 0 ? 0 : afterDiscount >= 99900 ? 0 : 7900;
+  const shippingPaise =
+    cart.items.length === 0 || isStorePickup
+      ? 0
+      : afterDiscount >= 99900
+        ? 0
+        : 7900;
   const totalPaise = afterDiscount + shippingPaise;
 
   const fillDemoAddress = () => {
@@ -105,15 +139,21 @@ function CheckoutContent() {
         {
           method: 'POST',
           body: JSON.stringify({
+            fulfillmentType,
+            storeId: isStorePickup ? selectedStoreId : undefined,
+            city: isStorePickup ? (selectedStore?.city || selectedCity) : city,
             shippingAddress: {
               fullName,
               phone,
-              line1,
-              line2: line2 || undefined,
-              city,
-              state,
-              postalCode,
-              country,
+              line1: isStorePickup ? (selectedStore?.address || 'Store Pickup Desk') : line1,
+              line2: isStorePickup ? `${selectedStore?.name} (Click & Collect)` : (line2 || undefined),
+              city: isStorePickup ? (selectedStore?.city || selectedCity) : city,
+              state: isStorePickup ? 'Physical Store' : state,
+              postalCode: isStorePickup ? '000000' : postalCode,
+              country: 'India',
+              fulfillmentType,
+              pickupStoreId: isStorePickup ? selectedStore?.id : undefined,
+              pickupStoreName: isStorePickup ? selectedStore?.name : undefined,
             },
             paymentMethod,
             upiVpa: paymentMethod === 'UPI_VPA' ? upiVpa.trim() : undefined,
@@ -324,100 +364,266 @@ function CheckoutContent() {
 
       <form onSubmit={handleCheckout} className="mt-8 grid gap-8 lg:grid-cols-12">
         <div className="space-y-8 lg:col-span-7">
-          {/* Shipping Address */}
-          <div className="rounded-2xl border border-stone-200 bg-white p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">1. Delivery Address</h2>
-              <button
-                type="button"
-                onClick={fillDemoAddress}
-                className="text-xs font-semibold text-indigo-700 hover:underline"
+          {/* 1. Fulfillment Method (Omnichannel) */}
+          <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">1. Fulfillment Method</h2>
+            <p className="mt-1 text-xs text-stone-500">
+              Choose express delivery to your home or free 2-hour Click &amp; Collect pickup at our physical retail stores.
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label
+                className={`relative flex cursor-pointer flex-col rounded-xl border p-4 transition-all ${
+                  fulfillmentType === 'HOME_DELIVERY'
+                    ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-600'
+                    : 'border-stone-200 hover:border-stone-300'
+                }`}
               >
-                Fill Demo Address
-              </button>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Truck className="h-5 w-5 text-indigo-600" />
+                    <span className="font-semibold text-sm text-gray-900">Express Delivery</span>
+                  </div>
+                  <input
+                    type="radio"
+                    name="fulfillmentType"
+                    checked={fulfillmentType === 'HOME_DELIVERY'}
+                    onChange={() => setFulfillmentType('HOME_DELIVERY')}
+                    className="h-4 w-4 text-indigo-600"
+                  />
+                </div>
+                <p className="mt-2 text-xs text-stone-600">
+                  Delivered to your doorstep anywhere in India. Free for orders over ₹999.
+                </p>
+                <span className="mt-2 inline-flex items-center text-[11px] font-semibold text-indigo-700">
+                  ⚡ Dispatches in 24 hours
+                </span>
+              </label>
+
+              <label
+                className={`relative flex cursor-pointer flex-col rounded-xl border p-4 transition-all ${
+                  fulfillmentType === 'STORE_PICKUP'
+                    ? 'border-emerald-600 bg-emerald-50/50 ring-2 ring-emerald-600'
+                    : 'border-stone-200 hover:border-stone-300'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Store className="h-5 w-5 text-emerald-600" />
+                    <span className="font-semibold text-sm text-gray-900">Click &amp; Collect</span>
+                  </div>
+                  <input
+                    type="radio"
+                    name="fulfillmentType"
+                    checked={fulfillmentType === 'STORE_PICKUP'}
+                    onChange={() => setFulfillmentType('STORE_PICKUP')}
+                    className="h-4 w-4 text-emerald-600"
+                  />
+                </div>
+                <p className="mt-2 text-xs text-stone-600">
+                  Collect from our physical store counter. Never wait for a courier.
+                </p>
+                <span className="mt-2 inline-flex items-center font-semibold text-[11px] text-emerald-700">
+                  🏬 Ready in 2 Hours • 100% Free
+                </span>
+              </label>
             </div>
 
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-medium text-stone-600">Full Name</label>
-                <input
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                />
+            {/* Store branch selector if Click & Collect */}
+            {isStorePickup && (
+              <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-emerald-700" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-900">
+                      Select Store Branch for Pickup
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-medium text-emerald-800">
+                    City: {selectedCity || 'All Branches'}
+                  </span>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {stores
+                    .filter(
+                      (s) =>
+                        !selectedCity ||
+                        s.city.toLowerCase() === selectedCity.toLowerCase() ||
+                        stores.filter((x) => x.city.toLowerCase() === selectedCity.toLowerCase()).length === 0,
+                    )
+                    .map((s) => (
+                      <label
+                        key={s.id}
+                        className={`flex cursor-pointer items-start justify-between rounded-lg border p-3 text-xs transition-colors ${
+                          selectedStoreId === s.id
+                            ? 'border-emerald-600 bg-white font-medium text-gray-900 shadow-sm'
+                            : 'border-emerald-200/80 bg-white/80 text-stone-600 hover:bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <input
+                            type="radio"
+                            name="pickupStore"
+                            value={s.id}
+                            checked={selectedStoreId === s.id}
+                            onChange={() => setSelectedStoreId(s.id)}
+                            className="mt-0.5 text-emerald-600"
+                          />
+                          <div>
+                            <div className="font-semibold text-gray-900">
+                              {s.name} <span className="font-normal text-stone-500">({s.code})</span>
+                            </div>
+                            <div className="text-stone-500 mt-0.5">{s.address}</div>
+                            <div className="mt-1 text-[11px] text-emerald-700">
+                              🕒 10:00 AM – 9:30 PM • 2-Hour Express Pickup Counter
+                            </div>
+                          </div>
+                        </div>
+                        <span className="shrink-0 rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                          {s.city}
+                        </span>
+                      </label>
+                    ))}
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600">Phone Number</label>
-                <input
-                  required
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+91 9876543210"
-                  className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-stone-600">Address Line 1</label>
-                <input
-                  required
-                  value={line1}
-                  onChange={(e) => setLine1(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-stone-600">
-                  Landmark / Apartment (optional)
-                </label>
-                <input
-                  value={line2}
-                  onChange={(e) => setLine2(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600">City</label>
-                <input
-                  required
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600">State</label>
-                <input
-                  required
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600">PIN Code</label>
-                <input
-                  required
-                  value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600">Country</label>
-                <input
-                  required
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Payment Method (UPI Primary) */}
-          <div className="rounded-2xl border border-stone-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900">2. Payment Method (UPI Instant)</h2>
+          {/* 2. Contact & Address Details */}
+          <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">
+                {isStorePickup ? '2. Pickup Contact Information' : '2. Delivery Address'}
+              </h2>
+              {!isStorePickup && (
+                <button
+                  type="button"
+                  onClick={fillDemoAddress}
+                  className="text-xs font-semibold text-indigo-700 hover:underline"
+                >
+                  Fill Demo Address
+                </button>
+              )}
+            </div>
+
+            {isStorePickup ? (
+              <div className="mt-4 space-y-4">
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 text-xs text-emerald-800">
+                  Your Digital Pickup Pass and OTP will be issued to this name and phone number upon payment.
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-medium text-stone-600">Full Name</label>
+                    <input
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="e.g. Priya Nair"
+                      className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-stone-600">Phone Number (for SMS &amp; Pass OTP)</label>
+                    <input
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+91 9876543210"
+                      className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                {selectedStore && (
+                  <div className="rounded-xl bg-stone-50 p-3 text-xs text-stone-600">
+                    <span className="font-semibold text-stone-800">Pickup Counter: </span>
+                    {selectedStore.name}, {selectedStore.address}, {selectedStore.city}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-medium text-stone-600">Full Name</label>
+                  <input
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-stone-600">Phone Number</label>
+                  <input
+                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+91 9876543210"
+                    className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-stone-600">Address Line 1</label>
+                  <input
+                    required
+                    value={line1}
+                    onChange={(e) => setLine1(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-stone-600">
+                    Landmark / Apartment (optional)
+                  </label>
+                  <input
+                    value={line2}
+                    onChange={(e) => setLine2(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-stone-600">City</label>
+                  <input
+                    required
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-stone-600">State</label>
+                  <input
+                    required
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-stone-600">PIN Code</label>
+                  <input
+                    required
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-stone-600">Country</label>
+                  <input
+                    required
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3. Payment Method (UPI Primary) */}
+          <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">3. Payment Method (UPI Instant)</h2>
             <div className="mt-4 space-y-3">
               <label
                 className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${

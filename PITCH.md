@@ -63,7 +63,9 @@ We built **AetherMart**, a full-stack omnichannel platform designed around the *
 
 ## 4. Live Demo Highlights (15 Seconds)
 1. **Instant Typo Search:** Watch `bluetoth` return Bluetooth earphones with a green badge: **`⚡ Served by OpenSearch in 3 ms`**.
-2. **City Store Filter:** Select **"Mumbai"** to see products available across Bandra and Lower Parel stores.
-3. **UPI QR Checkout:** Seamless checkout using Indian UPI standards.
-4. **Live Observability Stream at `/system`:** Real-time Server-Sent Events (SSE) tracing Postgres save &rarr; Kafka publication &rarr; Consumer receipt &rarr; OpenSearch index update &rarr; Nodemailer dispatch.
-5. **The Proof Button (100 Concurrent Buyers vs 5 Units):** Click the admin stress-test button to fire 100 simultaneous checkouts. PostgreSQL row locks instantly reject 95 attempts, leaving final stock at exactly 0 with **Zero Oversell**.
+2. **City Store Filter & Header Switcher:** Select **"Mumbai"** in the navbar to personalize the store and browse physical stock across Bandra and Lower Parel stores.
+3. **Omnichannel Click &amp; Collect (BOPIS):** Choose Free In-Store Pickup in 2 hours with ₹0 shipping and receive an instant **Digital Store Pickup Pass** with a scannable QR code and verification PIN.
+4. **Live Kafka Consumer Lag Visualizer:** Inspect committed offsets vs high watermarks across all 3 consumer groups at `/system`, proving **`Lag: 0 msgs (Real-Time)`**.
+5. **Dynamic Flash Sale Broadcast:** Broadcast a 20% discount event via Kafka `catalog.events`, syncing OpenSearch sub-10ms.
+6. **The Concurrency Proof Button (100 Concurrent Buyers vs 5 Units):** Click the admin stress-test button to fire 100 simultaneous checkouts. PostgreSQL row locks instantly reject 95 attempts, leaving final stock at exactly 0 with **Zero Oversell**.
+

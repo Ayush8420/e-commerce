@@ -72,6 +72,7 @@ export class OrdersService {
       });
     }
 
+    const isStorePickup = dto.fulfillmentType === 'STORE_PICKUP';
     const subtotalPaise = activeCartItems.reduce(
       (sum, item) => sum + item.product.pricePaise * item.quantity,
       0,
@@ -161,8 +162,11 @@ export class OrdersService {
       }
 
       const afterDiscount = Math.max(0, subtotalPaise - discountPaise);
-      const shippingPaise =
-        afterDiscount >= FREE_SHIPPING_THRESHOLD_PAISE ? 0 : STANDARD_SHIPPING_PAISE;
+      const shippingPaise = isStorePickup
+        ? 0
+        : afterDiscount >= FREE_SHIPPING_THRESHOLD_PAISE
+        ? 0
+        : STANDARD_SHIPPING_PAISE;
       const totalPaise = afterDiscount + shippingPaise;
 
       const upiMeta = this.payments.buildUpiMetadata({
@@ -172,6 +176,13 @@ export class OrdersService {
         method: dto.paymentMethod,
         upiVpa: dto.upiVpa,
       });
+
+      const enrichedShippingAddress = {
+        ...dto.shippingAddress,
+        fulfillmentType: isStorePickup ? 'STORE_PICKUP' : 'HOME_DELIVERY',
+        pickupStoreId: selectedStore?.id ?? null,
+        pickupStoreName: selectedStore?.name ?? null,
+      };
 
       const order = await tx.order.create({
         data: {
@@ -187,7 +198,7 @@ export class OrdersService {
           shippingPaise,
           totalPaise,
           promoCode: appliedPromoCode,
-          shippingAddress: dto.shippingAddress as unknown as Prisma.InputJsonValue,
+          shippingAddress: enrichedShippingAddress as unknown as Prisma.InputJsonValue,
           upiTransactionRef: transactionRef,
           upiVpa: dto.upiVpa?.trim() || null,
           items: {
@@ -240,6 +251,7 @@ export class OrdersService {
             totalPaise: order.totalPaise,
             storeId: selectedStore?.id ?? null,
             city: selectedStore?.city ?? null,
+            fulfillmentType: isStorePickup ? 'STORE_PICKUP' : 'HOME_DELIVERY',
             occurredAt: nowIso,
           },
         },

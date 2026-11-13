@@ -47,26 +47,41 @@ npm run dev
 
 ---
 
-### Step 3: Atomic Checkout with UPI QR & Row-Level Protection (60s)
+### Step 3: Omnichannel Fulfillment — Express Delivery vs Click &amp; Collect (60s)
 1. On the product page, click **"Add to Bag"**.
 2. Open the cart drawer, click **"Proceed to Checkout"**.
-3. Click **"Fill Demo Address"** (auto-fills Mumbai or Bengaluru shipping address).
-4. Select **UPI QR / VPA** payment method.
+3. **Omnichannel Fulfillment Selector**:
+   - Point out the 2 fulfillment choices:
+     * **🚚 Express Home Delivery**: Dispatches in 24 hrs across India.
+     * **🏬 Click &amp; Collect (Store Pickup)**: Ready in 2 hours at local store branches &bull; 100% Free shipping.
+   - Select **"Click &amp; Collect"**: Notice shipping drops immediately to **₹0 (FREE)**.
+   - Choose a physical retail store branch (e.g. *AetherMart Bandra Flagship*).
+4. Enter Customer details (Full Name, Phone for OTP) and select **UPI QR**.
 5. Click **"Pay with UPI"**:
    - A dynamic NPCI UPI QR code and deep-link are generated.
-6. Open [http://localhost:3000/system](http://localhost:3000/system) in a side-by-side browser window.
-7. Return to checkout and click **"Simulate UPI App Scan & Pay"**:
-   - Payment is verified immediately, stock is conditionally decremented inside an atomic PostgreSQL transaction, and an outbox event is enqueued.
+6. Click **"Simulate UPI App Scan &amp; Pay"**:
+   - Payment is verified immediately, stock is conditionally decremented inside an atomic PostgreSQL transaction, and outbox events (`order.created`, `order.pickup_ready`) are enqueued.
+7. Redirects to Order Confirmation page (`/orders/[id]`):
+   - **Show judges the Digital Store Pickup Pass**:
+     * Emerald pass card with **scannable Store Pickup QR Pass**.
+     * Branch address, opening hours (10:00 AM – 9:30 PM), and 4-digit pickup PIN for the counter agent.
 
 ---
 
-### Step 4: Live Observability Pipeline at `/system` (45s)
-1. In [http://localhost:3000/system](http://localhost:3000/system), observe the real-time event feed:
-   - **PostgreSQL**: `order_saved_postgres` &rarr; Order `ORD-...` recorded and store inventory locked atomically.
-   - **Kafka Outbox Relay**: `kafka_event_published` &rarr; Relayed to topic `order.events` (partition 0, offset X).
-   - **Kafka Consumer**: `kafka_consumer_received` &rarr; `OrderConsumer` processes order confirmation with idempotent `ProcessedEvent` deduplication (replay-safe).
-   - **OpenSearch Sync**: `opensearch_doc_indexed` &rarr; `CatalogConsumer` updates the OpenSearch document's stock and available cities.
-   - **Email Notification**: `email_notification_sent` &rarr; Nodemailer dispatches order confirmation email.
+### Step 4: Live Observability Pipeline &amp; Kafka Consumer Lag at `/system` (45s)
+1. In [http://localhost:3000/system](http://localhost:3000/system), observe:
+   - **Kafka Consumer Lag Visualizer**:
+     * Direct live monitoring of consumer groups (`ecommerce-catalog`, `ecommerce-orders`, `ecommerce-notifications`).
+     * Real-time committed offsets vs high watermarks with badge: **`Lag: 0 msgs (Real-Time)`**.
+   - **Dynamic Flash Sale Broadcast Button**:
+     * Click **"⚡ Broadcast 20% Flash Sale Drop"**.
+     * Watch the pipeline light up: PostgreSQL commits price drop &rarr; Kafka emits `product.price_changed` to `catalog.events` &rarr; `CatalogConsumer` syncs OpenSearch index in sub-10ms!
+   - **Live Event Pipeline Stream**:
+     * **PostgreSQL**: `order_saved_postgres` &rarr; Order `ORD-...` recorded and store inventory locked atomically.
+     * **Kafka Outbox Relay**: `kafka_event_published` &rarr; Relayed to topic `order.events` (partition 0, offset X).
+     * **Kafka Consumer**: `kafka_consumer_received` &rarr; `OrderConsumer` processes order confirmation with idempotent `ProcessedEvent` deduplication (replay-safe).
+     * **OpenSearch Sync**: `opensearch_doc_indexed` &rarr; `CatalogConsumer` updates the OpenSearch document's stock and available cities.
+     * **Email Notification**: `email_notification_sent` &rarr; Nodemailer dispatches order confirmation email.
 2. **What to point out to judges**:
    - Every single asynchronous step is visible with timestamps and millisecond latencies.
    - Idempotency guarantees that even if Kafka replays a message, stock is **never double-decremented** and emails are **never double-sent**.
@@ -104,3 +119,4 @@ npm run dev
 | **Aiven for PostgreSQL** | Source of truth, relational integrity, row-level atomic locks preventing 100 concurrent buyers from overselling 5 units, transactional outbox storage. |
 | **Aiven for Apache Kafka** | Decoupled event bus across 4 topics (`order.events`, `catalog.events`, `notification.events`, `analytics.events`) with idempotent consumer deduplication. |
 | **Aiven for OpenSearch** | Typo tolerance (`"bluetoth"`, `"samsng"`), sub-5ms search queries, facet aggregation across 8 Indian cities, dynamic stock sync. |
+

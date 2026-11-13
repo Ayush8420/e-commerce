@@ -3,7 +3,15 @@
 import React, { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { formatInrFromPaise } from '@ecommerce/shared';
-import { ArrowLeft, CheckCircle2, ExternalLink, RefreshCw, XCircle } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  RefreshCw,
+  Store,
+  XCircle,
+} from 'lucide-react';
 import { useStore } from '@/components/providers/StoreProvider';
 import { apiFetch, OrderView, UpiPaymentPayload } from '@/lib/api';
 
@@ -172,6 +180,72 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
 
+      {/* Omnichannel Click & Collect Digital Pickup Pass */}
+      {order.shippingAddress.fulfillmentType === 'STORE_PICKUP' && (
+        <div className="mt-6 overflow-hidden rounded-2xl border-2 border-emerald-500 bg-gradient-to-br from-emerald-950 via-stone-900 to-black text-white shadow-xl">
+          <div className="flex items-center justify-between border-b border-emerald-800/60 bg-emerald-900/40 px-6 py-3">
+            <div className="flex items-center gap-2">
+              <Store className="h-5 w-5 text-emerald-400" />
+              <span className="text-xs font-bold uppercase tracking-widest text-emerald-300">
+                AetherMart Click &amp; Collect • Digital Store Pass
+              </span>
+            </div>
+            <span className="rounded-full border border-emerald-500/40 bg-emerald-500/20 px-3 py-1 font-mono text-[11px] font-semibold text-emerald-300">
+              ⚡ READY FOR PICKUP IN 2 HRS
+            </span>
+          </div>
+
+          <div className="flex flex-col items-center justify-between gap-6 p-6 sm:flex-row sm:p-8">
+            <div className="space-y-3 text-center sm:text-left">
+              <div>
+                <span className="text-xs uppercase tracking-wider text-stone-400">Pickup Location</span>
+                <h3 className="text-xl font-bold text-white">
+                  {order.shippingAddress.pickupStoreName || order.shippingAddress.line2 || 'AetherMart Flagship Store'}
+                </h3>
+                <p className="mt-0.5 text-sm text-stone-300">
+                  {order.shippingAddress.line1}, {order.shippingAddress.city}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap justify-center gap-3 pt-1 sm:justify-start">
+                <div className="rounded-lg bg-white/10 px-3 py-1.5 text-xs">
+                  <span className="block text-[10px] uppercase text-stone-400">Recipient</span>
+                  <span className="font-semibold text-white">{order.shippingAddress.fullName}</span>
+                </div>
+                <div className="rounded-lg bg-white/10 px-3 py-1.5 text-xs">
+                  <span className="block text-[10px] uppercase text-stone-400">Phone</span>
+                  <span className="font-semibold text-white">{order.shippingAddress.phone}</span>
+                </div>
+                <div className="rounded-lg border border-emerald-500/50 bg-emerald-950 px-3 py-1.5 text-xs">
+                  <span className="block text-[10px] uppercase text-emerald-400">Pickup Secret PIN</span>
+                  <span className="font-mono text-sm font-bold text-emerald-300">
+                    {order.orderNumber.replace(/[^0-9]/g, '').slice(-4) || '8492'}
+                  </span>
+                </div>
+              </div>
+
+              <p className="flex items-center justify-center gap-1.5 pt-2 text-xs text-stone-400 sm:justify-start">
+                <Clock className="h-3.5 w-3.5 text-emerald-400" /> Counter Open: Mon–Sun 10:00 AM – 9:30 PM
+              </p>
+            </div>
+
+            {/* Scannable Pass QR */}
+            <div className="flex shrink-0 flex-col items-center rounded-xl bg-white p-4 shadow-lg">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
+                  `AETHERMART-PASS:${order.orderNumber}:${order.id}`,
+                )}`}
+                alt="Store Pickup QR Pass"
+                className="h-36 w-36"
+              />
+              <span className="mt-2 font-mono text-[11px] font-bold tracking-wider text-gray-900">
+                SCAN AT STORE COUNTER
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Pending UPI Payment Box */}
       {payment && order.status === 'PENDING_PAYMENT' && (
         <div className="mt-6 flex flex-col items-center gap-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 sm:flex-row">
@@ -238,18 +312,38 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
         <div className="space-y-6">
           <div className="rounded-2xl border border-stone-200 bg-white p-5">
-            <h2 className="text-base font-semibold text-gray-900">Shipping &amp; Payment</h2>
-            <p className="mt-2 text-xs leading-relaxed text-stone-600">
-              <strong className="text-gray-900">{order.shippingAddress.fullName}</strong>
-              <br />
-              {order.shippingAddress.line1}
-              {order.shippingAddress.line2 ? `, ${order.shippingAddress.line2}` : ''}
-              <br />
-              {order.shippingAddress.city}, {order.shippingAddress.state}{' '}
-              {order.shippingAddress.postalCode}
-              <br />
-              Phone: {order.shippingAddress.phone}
-            </p>
+            <h2 className="text-base font-semibold text-gray-900">
+              {order.shippingAddress.fulfillmentType === 'STORE_PICKUP'
+                ? 'Store Pickup Details'
+                : 'Shipping & Payment'}
+            </h2>
+            {order.shippingAddress.fulfillmentType === 'STORE_PICKUP' ? (
+              <div className="mt-2 text-xs leading-relaxed text-stone-600">
+                <span className="mb-2 inline-block rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                  🏬 Click &amp; Collect (In-Store Pickup)
+                </span>
+                <br />
+                <strong className="text-gray-900">{order.shippingAddress.fullName}</strong>
+                <br />
+                Pickup Store: {order.shippingAddress.pickupStoreName || order.shippingAddress.line2}
+                <br />
+                Address: {order.shippingAddress.line1}, {order.shippingAddress.city}
+                <br />
+                Phone: {order.shippingAddress.phone}
+              </div>
+            ) : (
+              <p className="mt-2 text-xs leading-relaxed text-stone-600">
+                <strong className="text-gray-900">{order.shippingAddress.fullName}</strong>
+                <br />
+                {order.shippingAddress.line1}
+                {order.shippingAddress.line2 ? `, ${order.shippingAddress.line2}` : ''}
+                <br />
+                {order.shippingAddress.city}, {order.shippingAddress.state}{' '}
+                {order.shippingAddress.postalCode}
+                <br />
+                Phone: {order.shippingAddress.phone}
+              </p>
+            )}
             {order.payments[0]?.utrNumber && (
               <div className="mt-4 rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900">
                 UTR Ref: <code className="font-mono font-semibold">{order.payments[0].utrNumber}</code>

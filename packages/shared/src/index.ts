@@ -21,6 +21,7 @@ export type OrderStatus =
 
 export type PaymentMethod = 'UPI_QR' | 'UPI_VPA' | 'CARD_TEST';
 export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+export type FulfillmentType = 'HOME_DELIVERY' | 'STORE_PICKUP';
 
 export interface ShippingAddress {
   fullName: string;
@@ -31,6 +32,9 @@ export interface ShippingAddress {
   state: string;
   postalCode: string;
   country: string;
+  fulfillmentType?: FulfillmentType;
+  pickupStoreId?: string;
+  pickupStoreName?: string;
 }
 
 export interface ProductDocument {
@@ -108,12 +112,15 @@ export interface CatalogEventPayload {
   | 'product.updated'
   | 'product.deleted'
   | 'product.stock_changed'
+  | 'product.price_changed'
   | 'product.rating_updated'
-  | 'inventory.changed';
+  | 'inventory.changed'
+  | 'inventory.low_stock';
   productId: string;
   storeId?: string;
   city?: string;
   quantity?: number;
+  pricePaise?: number;
   availableCities?: string[];
   occurredAt: string;
 }
@@ -125,7 +132,8 @@ export interface OrderEventPayload {
   | 'order.payment_succeeded'
   | 'order.payment_failed'
   | 'order.status_updated'
-  | 'order.cancelled';
+  | 'order.cancelled'
+  | 'order.pickup_ready';
   orderId: string;
   orderNumber?: string;
   userId?: string;
@@ -134,7 +142,24 @@ export interface OrderEventPayload {
   totalPaise?: number;
   storeId?: string;
   city?: string;
+  fulfillmentType?: FulfillmentType;
   occurredAt?: string;
+}
+
+export interface ConsumerGroupLag {
+  groupId: string;
+  topic: string;
+  partition: number;
+  currentOffset: string;
+  logEndOffset: string;
+  lag: number;
+}
+
+export interface KafkaMetricsResponse {
+  status: 'connected' | 'disconnected';
+  groups: ConsumerGroupLag[];
+  totalLag: number;
+  timestamp: string;
 }
 
 export interface NotificationEmailEventPayload {
