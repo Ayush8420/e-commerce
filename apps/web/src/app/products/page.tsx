@@ -3,7 +3,7 @@
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { formatInrFromPaise, SearchResponse } from '@ecommerce/shared';
-import { Filter, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Filter, MapPin, Search, SlidersHorizontal, X, Zap } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
 import { apiFetch } from '@/lib/api';
 
@@ -12,6 +12,7 @@ function CatalogContent() {
   const searchParams = useSearchParams();
 
   const [q, setQ] = useState(searchParams.get('q') ?? '');
+  const [selectedCity, setSelectedCity] = useState(searchParams.get('city') ?? '');
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     searchParams.get('category')?.split(',').filter(Boolean) ?? [],
   );
@@ -30,6 +31,7 @@ function CatalogContent() {
 
   useEffect(() => {
     setQ(searchParams.get('q') ?? '');
+    setSelectedCity(searchParams.get('city') ?? '');
     setSelectedCategories(searchParams.get('category')?.split(',').filter(Boolean) ?? []);
     setSelectedBrands(searchParams.get('brand')?.split(',').filter(Boolean) ?? []);
     setMinPrice(searchParams.get('minPrice') ?? '');
@@ -45,6 +47,7 @@ function CatalogContent() {
       const next = new URLSearchParams();
       const merged: Record<string, string | undefined> = {
         q: q.trim() || undefined,
+        city: selectedCity || undefined,
         category: selectedCategories.length ? selectedCategories.join(',') : undefined,
         brand: selectedBrands.length ? selectedBrands.join(',') : undefined,
         minPrice: minPrice || undefined,
@@ -61,7 +64,7 @@ function CatalogContent() {
       const qs = next.toString();
       router.push(qs ? `/products?${qs}` : '/products');
     },
-    [inStock, maxPrice, minPrice, minRating, page, q, router, selectedBrands, selectedCategories, sort],
+    [inStock, maxPrice, minPrice, minRating, page, q, router, selectedBrands, selectedCategories, selectedCity, sort],
   );
 
   useEffect(() => {
@@ -69,6 +72,7 @@ function CatalogContent() {
     setLoading(true);
     const params = new URLSearchParams();
     if (searchParams.get('q')) params.set('q', searchParams.get('q')!);
+    if (searchParams.get('city')) params.set('city', searchParams.get('city')!);
     if (searchParams.get('category')) params.set('category', searchParams.get('category')!);
     if (searchParams.get('brand')) params.set('brand', searchParams.get('brand')!);
     if (searchParams.get('minPrice')) params.set('minPrice', searchParams.get('minPrice')!);
@@ -103,24 +107,38 @@ function CatalogContent() {
       <div className="flex flex-col gap-4 border-b border-stone-200 pb-6 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Catalog</h1>
-          <p className="mt-1 text-sm text-stone-600">
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-stone-600">
             {result ? (
               <>
-                Showing <strong>{result.total}</strong> results
-                <span
-                  className={`ml-2 inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[11px] ${
-                    result.searchEngine === 'demo-fallback'
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-stone-100 text-stone-600'
-                  }`}
-                >
-                  engine: {result.searchEngine}
+                <span>
+                  Showing <strong>{result.total}</strong> results
                 </span>
+                {result.searchEngine === 'opensearch' ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-emerald-800 border border-emerald-200">
+                    <Zap className="h-3 w-3 text-emerald-600" />
+                    Served by OpenSearch in {result.tookMs ?? 3} ms
+                  </span>
+                ) : (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[11px] ${
+                      result.searchEngine === 'demo-fallback'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-stone-100 text-stone-600'
+                    }`}
+                  >
+                    engine: {result.searchEngine}
+                  </span>
+                )}
+                {selectedCity && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 font-medium text-xs text-indigo-700 border border-indigo-200">
+                    <MapPin className="h-3 w-3" /> {selectedCity} Stores
+                  </span>
+                )}
               </>
             ) : (
               'Searching products...'
             )}
-          </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -171,6 +189,60 @@ function CatalogContent() {
                 Reset
               </button>
             </div>
+
+            {/* City Store Stock (Physical Retail Stores) */}
+            {result && result.facets.cities && result.facets.cities.length > 0 && (
+              <div className="mt-5 border-b border-stone-100 pb-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-indigo-600" /> City Store Stock
+                  </h3>
+                  {selectedCity && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCity('');
+                        syncUrl({ city: undefined, page: undefined });
+                      }}
+                      className="text-[11px] text-stone-400 hover:text-stone-700"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="mt-2.5 space-y-1.5">
+                  {result.facets.cities.map((city) => {
+                    const isCurrent = selectedCity.toLowerCase() === city.key.toLowerCase();
+                    return (
+                      <button
+                        key={city.key}
+                        type="button"
+                        onClick={() => {
+                          const next = isCurrent ? undefined : city.key;
+                          setSelectedCity(next ?? '');
+                          syncUrl({ city: next, page: undefined });
+                        }}
+                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition-colors text-left ${
+                          isCurrent
+                            ? 'bg-indigo-50 font-bold text-indigo-900 border border-indigo-200'
+                            : 'text-stone-700 hover:bg-stone-50'
+                        }`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            className={`h-2 w-2 rounded-full ${
+                              isCurrent ? 'bg-indigo-600' : 'bg-stone-300'
+                            }`}
+                          />
+                          <span>{city.key}</span>
+                        </span>
+                        <span className="font-mono text-[11px] text-stone-400">{city.count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Categories */}
             {result && result.facets.categories.length > 0 && (
@@ -322,7 +394,7 @@ function CatalogContent() {
 
         {/* Product Grid */}
         <div className="lg:col-span-9">
-          {(selectedCategories.length > 0 || selectedBrands.length > 0 || searchParams.get('q')) && (
+          {(selectedCity || selectedCategories.length > 0 || selectedBrands.length > 0 || searchParams.get('q')) && (
             <div className="mb-4 flex flex-wrap items-center gap-2">
               {searchParams.get('q') && (
                 <button
@@ -331,6 +403,18 @@ function CatalogContent() {
                   className="inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white"
                 >
                   Query: &ldquo;{searchParams.get('q')}&rdquo; <X className="h-3 w-3" />
+                </button>
+              )}
+              {selectedCity && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCity('');
+                    syncUrl({ city: undefined, page: undefined });
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1 text-xs font-semibold text-white"
+                >
+                  <MapPin className="h-3 w-3" /> City: {selectedCity} <X className="h-3 w-3" />
                 </button>
               )}
               {selectedCategories.map((c) => (

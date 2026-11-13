@@ -11,6 +11,7 @@ import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SearchModule } from './search/search.module';
+import { SystemModule } from './system/system.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { SearchModule } from './search/search.module';
       envFilePath: ['../../.env', '.env'],
     }),
     PrismaModule,
+    SystemModule,
     KafkaModule,
     NotificationsModule,
     AnalyticsModule,

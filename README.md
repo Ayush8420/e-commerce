@@ -1,17 +1,103 @@
-# AetherMart — Event-Driven E-Commerce Platform
+# AetherMart — Event-Driven Omnichannel Retail Platform
 
-Full-stack e-commerce application built with **Next.js 16**, **NestJS 12**, **PostgreSQL + Prisma**, **Apache Kafka (KRaft)**, **OpenSearch**, **UPI QR / VPA Checkout**, **Email + Google OAuth**, and **Transactional Email Notifications**.
+Full-stack omnichannel e-commerce platform built for a physical retail store chain across India transitioning online. Powered by **Next.js 16**, **NestJS 12**, **Aiven for PostgreSQL**, **Aiven for Apache Kafka (KRaft)**, and **Aiven for OpenSearch**.
 
-## Architecture
+---
 
-- **Frontend (`apps/web`)**: Next.js App Router + Tailwind CSS v4 with live OpenSearch autocomplete, faceted search sidebar, product reviews, persistent guest/DB cart merge, UPI QR & VPA checkout sheet, order tracking timeline, and Admin Console.
-- **Backend (`apps/api`)**: NestJS modular API with Prisma ORM, JWT access + HttpOnly refresh token rotation, Google OAuth 2.0, atomic stock reservation, UPI deep-link/QR generator (`qrcode`), and Razorpay webhook support.
-- **Shared (`packages/shared`)**: Shared TypeScript contracts, Kafka topic definitions, INR formatting, and NPCI UPI deep-link helpers.
-- **Event-Driven Kafka + Outbox Pipeline**:
-  - `catalog.events` — PostgreSQL product/stock/rating mutations enqueue `OutboxEvent` rows relayed to Kafka; `CatalogConsumer` syncs documents to OpenSearch.
-  - `order.events` — Checkout, UPI verification/failure, cancellation, and admin status changes drive `OrderConsumer`.
-  - `notification.events` — `NotificationConsumer` delivers HTML/text transactional emails via Nodemailer (`Mailpit` in dev, SMTP in prod) with idempotent `NotificationLog` deduplication.
-  - `analytics.events` — Captures `search.performed`, `product.viewed`, `cart.item_added`, `checkout.started`, and `order.completed`.
+## Architecture Diagram
+
+```mermaid
+flowchart TD
+    subgraph Client["Next.js 16 Storefront (apps/web)"]
+        UI["Browse & Typo Search (/products)"]
+        Cart["Cart & UPI Checkout (/checkout)"]
+        SystemMonitor["Live System Activity (/system)"]
+    end
+
+    subgraph API["NestJS API Gateway (apps/api)"]
+        SearchController["Search & Suggest"]
+        OrdersController["Orders & Checkout Engine"]
+        SystemController["SSE Activity Stream & Stress Test"]
+        OutboxRelay["Transactional Outbox Relay"]
+    end
+
+    subgraph AivenPG["Aiven for PostgreSQL"]
+        DB_Stores["16 Retail Stores (8 Indian Cities)"]
+        DB_Inventory["Inventory (Atomic Conditional Locks)"]
+        DB_Orders["Orders, Users & Payments"]
+        DB_Outbox["OutboxEvent Table"]
+        DB_Processed["ProcessedEvent (Idempotency)"]
+    end
+
+    subgraph AivenKafka["Aiven for Apache Kafka (KRaft)"]
+        Topic_Catalog["catalog.events"]
+        Topic_Order["order.events"]
+        Topic_Notify["notification.events"]
+        Topic_Analytics["analytics.events"]
+    end
+
+    subgraph Consumers["Idempotent Kafka Consumers"]
+        CatalogConsumer["Catalog Consumer"]
+        OrderConsumer["Order Consumer"]
+        NotifyConsumer["Notification Consumer"]
+    end
+
+    subgraph AivenOS["Aiven for OpenSearch"]
+        OS_Index["products_v1 (AUTO Fuzziness & City Facets)"]
+    end
+
+    subgraph EmailService["Transactional Email"]
+        Nodemailer["Nodemailer (Gmail SMTP / Mailpit)"]
+    end
+
+    %% Client Interactions
+    UI -->|1. Fuzzy Typo Search & City Filter| SearchController
+    SearchController -->|Sub-5ms Query| OS_Index
+    Cart -->|2. Atomic Checkout POST| OrdersController
+    SystemMonitor -->|3. Live SSE Pipeline Stream| SystemController
+
+    %% API to PostgreSQL
+    OrdersController -->|Row-level Lock: UPDATE Inventory WHERE qty >= $n| DB_Inventory
+    OrdersController -->|Save Order + Outbox Record in 1 Tx| DB_Orders
+    OrdersController -->|Insert OutboxEvent| DB_Outbox
+
+    %% Outbox to Kafka
+    DB_Outbox -->|Poll & Relay| OutboxRelay
+    OutboxRelay -->|TLS / SASL Publish| AivenKafka
+
+    %% Kafka to Consumers
+    Topic_Catalog --> CatalogConsumer
+    Topic_Order --> OrderConsumer
+    Topic_Notify --> NotifyConsumer
+
+    %% Consumer side effects
+    CatalogConsumer -->|Dedupe via ProcessedEvent| DB_Processed
+    CatalogConsumer -->|Reindex Updated Stock & Cities| OS_Index
+    OrderConsumer -->|Lifecycle Updates| DB_Orders
+    NotifyConsumer -->|Dedupe via NotificationLog| Nodemailer
+
+    %% Real-time System feed
+    OrdersController -.->|Push Event| SystemController
+    OutboxRelay -.->|Push Event| SystemController
+    CatalogConsumer -.->|Push Event| SystemController
+    NotifyConsumer -.->|Push Event| SystemController
+```
+
+---
+
+## Key Hackathon Highlights
+
+- **Typo-Tolerant Search (`Aiven for OpenSearch`)**: Handles aggressive misspellings like `"bluetoth"` (Bluetooth earphones), `"samsng"` (Samsung phones), and `"mobail"` (mobiles) with `fuzziness: "AUTO"` in sub-5ms with real-time city aggregation facets.
+- **Atomic Oversell Protection (`Aiven for PostgreSQL`)**: Single conditional update `UPDATE "Inventory" SET quantity = quantity - $n WHERE "productId" = $p AND "storeId" = $s AND quantity >= $n` inside an interactive transaction. 100 concurrent buyers competing for 5 units results in exactly 5 orders and zero negative stock.
+- **Physical Store Inventory Across India**: 16 retail branches across Mumbai, Pune, Delhi, Bengaluru, Hyderabad, Chennai, Kolkata, and Ahmedabad. Checkout reserves stock from local city stores.
+- **Transactional Outbox & Idempotency (`Aiven for Apache Kafka`)**: No ghost orders and no dropped events. Every consumer checks the `ProcessedEvent` unique table to guarantee replay safety.
+- **Live System Activity Monitor (`/system`)**: Real-time SSE stream visualizing each step from PostgreSQL save to Kafka publication, consumer receipt, OpenSearch doc update, and email delivery. Includes an interactive **100-Concurrent-Buyer Stress Test Button**.
+
+For step-by-step instructions:
+- 📖 [DEMO.md](file:///c:/Users/Ayush%20Tiwari/Desktop/freelance/e-commerce/DEMO.md) — Click-by-click judging demo script.
+- 🎤 [PITCH.md](file:///c:/Users/Ayush%20Tiwari/Desktop/freelance/e-commerce/PITCH.md) — 2-minute hackathon pitch outline.
+
+---
 
 ## Quick Start
 
@@ -54,6 +140,64 @@ Full-stack e-commerce application built with **Next.js 16**, **NestJS 12**, **Po
 - **Customer**: `customer@aethermart.local` / `Customer@12345`
 - **Admin**: `admin@aethermart.local` / `Admin@12345`
 - **Promo Codes**: `WELCOME10`, `FLAT500`, `UPIFIRST`
+
+## Run against Aiven
+
+The application runs seamlessly against managed cloud infrastructure on **Aiven** (Aiven for PostgreSQL, Aiven for Apache Kafka, and Aiven for OpenSearch) without requiring any local Docker containers running.
+
+### 1. Provision Services in Aiven Console
+1. **Aiven for PostgreSQL**: Note the Service URI (includes `sslmode=require`).
+2. **Aiven for Apache Kafka**:
+   * Enable SASL authentication (SCRAM-SHA-256) or download the Project CA certificate (`ca.pem`).
+   * Note the Service URI / host:port.
+3. **Aiven for OpenSearch**: Note the HTTPS Service URI and credentials (`avnadmin` + password).
+
+### 2. Configure Environment (`.env`)
+Update your `.env` file with your Aiven credentials:
+
+```bash
+# Aiven for PostgreSQL
+DATABASE_URL="postgres://avnadmin:<password>@<pg-host>:<pg-port>/defaultdb?sslmode=require"
+
+# Aiven for Apache Kafka (SASL/SCRAM example)
+KAFKA_BROKERS="<kafka-host>:<kafka-port>"
+KAFKA_SSL=true
+KAFKA_SASL_MECHANISM="scram-sha-256"
+KAFKA_USERNAME="avnadmin"
+KAFKA_PASSWORD="<kafka-password>"
+KAFKA_CA_PATH="./certs/ca.pem"      # optional if using public CA
+KAFKA_PARTITIONS=3
+KAFKA_REPLICATION_FACTOR=1
+
+# Aiven for OpenSearch
+OPENSEARCH_NODE="https://<opensearch-host>:<opensearch-port>"
+OPENSEARCH_USERNAME="avnadmin"
+OPENSEARCH_PASSWORD="<opensearch-password>"
+OPENSEARCH_PRODUCTS_INDEX="products_v1"
+```
+
+### 3. Initialize Database, Kafka Topics & Search Index
+Run the automated initialization scripts against Aiven:
+
+```bash
+# 1. Push schema and seed catalog into Aiven PostgreSQL
+npm run db:push
+npm run db:seed
+
+# 2. Idempotently create Kafka topics on Aiven Kafka
+npm run kafka:setup
+
+# 3. Create OpenSearch mapping and reindex products from Aiven PostgreSQL
+npm run opensearch:reindex
+```
+
+### 4. Start the Application
+```bash
+npm run dev
+```
+Both the storefront (`http://localhost:3000`) and API (`http://localhost:4000`) will now run entirely on Aiven cloud services.
+
+---
 
 ## Verification Commands
 

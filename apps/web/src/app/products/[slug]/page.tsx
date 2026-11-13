@@ -3,9 +3,24 @@
 import React, { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { formatInrFromPaise } from '@ecommerce/shared';
-import { ArrowLeft, CheckCircle2, Minus, Plus, ShieldCheck, Star, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, MapPin, Minus, Plus, ShieldCheck, Star, Store, Truck } from 'lucide-react';
 import { useStore } from '@/components/providers/StoreProvider';
 import { apiFetch, trackAnalyticsEvent } from '@/lib/api';
+
+interface StoreInventoryItem {
+  id: string;
+  storeId: string;
+  quantity: number;
+  store: {
+    id: string;
+    name: string;
+    code: string;
+    city: string;
+    state: string;
+    address: string;
+    isActive: boolean;
+  };
+}
 
 interface ProductDetail {
   id: string;
@@ -37,6 +52,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
   const { slug } = use(params);
   const { user, addToCart, notify } = useStore();
   const [product, setProduct] = useState<ProductDetail | null>(null);
+  const [storeInventories, setStoreInventories] = useState<StoreInventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
   const [qty, setQty] = useState(1);
@@ -55,6 +71,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
         productId: data.id,
         metadata: { slug: data.slug, category: data.category.slug },
       });
+
+      // Load per-store inventory across Indian physical retail outlets
+      apiFetch<StoreInventoryItem[]>(`/orders/stores/inventory/${data.id}`, { skipAuthRefresh: true })
+        .then((items) => {
+          if (Array.isArray(items)) setStoreInventories(items);
+        })
+        .catch(() => undefined);
     } catch {
       setProduct(null);
     } finally {
@@ -248,6 +271,45 @@ export default function ProductDetailPage({ params }: { params: Promise<{ slug: 
               Instant UPI QR &amp; VPA checkout supported
             </div>
           </div>
+
+          {/* Physical Retail Store Stock Across India */}
+          {storeInventories.length > 0 && (
+            <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-4 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-900">
+                  <Store className="h-4 w-4 text-indigo-600" /> Physical Store Availability
+                </span>
+                <span className="text-[11px] text-stone-500 font-mono">Live Aiven PostgreSQL Stock</span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {storeInventories.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex flex-col justify-between rounded-xl border border-stone-100 bg-stone-50 p-2 text-xs"
+                  >
+                    <div>
+                      <span className="flex items-center gap-1 font-semibold text-gray-900">
+                        <MapPin className="h-3 w-3 text-stone-400" /> {inv.store.city}
+                      </span>
+                      <p className="text-[10px] text-stone-500 truncate" title={inv.store.name}>
+                        {inv.store.name}
+                      </p>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between pt-1 border-t border-stone-200/60">
+                      <span className="text-[10px] text-stone-400">Stock:</span>
+                      <span
+                        className={`font-mono text-xs font-bold ${
+                          inv.quantity > 0 ? 'text-emerald-700' : 'text-red-500'
+                        }`}
+                      >
+                        {inv.quantity > 0 ? `${inv.quantity} units` : 'Sold out'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Specs */}
           {product.attributes && Object.keys(product.attributes).length > 0 && (
