@@ -44,7 +44,7 @@ export class SystemController {
     @Body('initialStock') initialStock?: number,
   ) {
     const n = Math.min(200, Math.max(10, concurrency ?? 100));
-    const s = Math.min(50, Math.max(1, initialStock ?? 5));
+    const s = Math.min(200, Math.max(1, initialStock ?? 5));
     return this.activity.runStressTest(n, s);
   }
 

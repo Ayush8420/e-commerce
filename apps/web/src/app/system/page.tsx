@@ -624,7 +624,7 @@ export default function SystemActivityPage() {
               <p className="mt-3 text-xs leading-relaxed text-stone-600">
                 This stress test fires <strong>{concurrency} simultaneous checkout transactions</strong> at a product with only{' '}
                 <strong>{initialStock} units in stock</strong>. Aiven PostgreSQL must guarantee that{' '}
-                <em>exactly {initialStock}</em> succeed, <em>{concurrency - initialStock}</em> are rejected with out-of-stock, and final inventory is <strong>exactly 0</strong> (never negative).
+                <em>exactly {Math.min(concurrency, initialStock)}</em> succeed, <em>{Math.max(0, concurrency - initialStock)}</em> are rejected with out-of-stock, and final inventory is <strong>exactly {Math.max(0, initialStock - concurrency)}</strong> (never negative).
               </p>
 
               {/* Stress Test Controls */}
@@ -650,7 +650,7 @@ export default function SystemActivityPage() {
                   <input
                     type="number"
                     min={1}
-                    max={50}
+                    max={200}
                     value={initialStock}
                     onChange={(e) => setInitialStock(Number(e.target.value))}
                     disabled={runningStress}

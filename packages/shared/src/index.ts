@@ -77,6 +77,7 @@ export interface SearchResponse {
   totalPages: number;
   searchEngine: 'opensearch' | 'postgres-fallback' | 'demo-fallback';
   tookMs?: number;
+  didYouMean?: string;
   facets: {
     categories: SearchFacetBucket[];
     brands: SearchFacetBucket[];
@@ -84,6 +85,26 @@ export interface SearchResponse {
     minPricePaise: number;
     maxPricePaise: number;
   };
+}
+
+export interface StoreAvailabilityItem {
+  storeId: string;
+  storeName: string;
+  storeCode: string;
+  city: string;
+  address: string;
+  quantity: number;
+  inStock: boolean;
+  lowStock: boolean;
+}
+
+export interface ProductAvailabilityResponse {
+  productId: string;
+  city: string;
+  requestedQty: number;
+  available: boolean;
+  totalCityStock: number;
+  stores: StoreAvailabilityItem[];
 }
 
 export interface StoreDto {

@@ -69,6 +69,13 @@ export const DEMO_CATEGORIES: DemoCategorySeed[] = [
     description: 'Mirrorless cameras, studio microphones, and pocket gimbals.',
     imageUrl: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=900&q=80',
   },
+  {
+    id: 'cat-mobile',
+    name: 'Smartphones & Mobile',
+    slug: 'smartphones-mobile',
+    description: 'Flagship 5G smartphones, foldables, and mobile accessories.',
+    imageUrl: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=900&q=80',
+  },
 ];
 
 export const DEMO_PRODUCTS: DemoProductSeed[] = [
@@ -472,6 +479,66 @@ export const DEMO_PRODUCTS: DemoProductSeed[] = [
     tags: ['vlog', 'gimbal', 'camera', '4k'],
     ratingAvg: 4.9,
     reviewCount: 33,
+  },
+  {
+    id: 'prod-samsung-s24',
+    title: 'Samsung Galaxy S24 Ultra 5G AI Smartphone',
+    slug: 'samsung-galaxy-s24-ultra-5g',
+    description:
+      'Galaxy AI flagship mobile phone with 200MP camera, Snapdragon 8 Gen 3, built-in S-Pen, and titanium frame.',
+    brand: 'Samsung',
+    pricePaise: 12999900,
+    compareAtPaise: 13999900,
+    sku: 'MOB-SAM-S24U',
+    stock: 24,
+    categorySlug: 'smartphones-mobile',
+    images: [
+      'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=1000&q=80',
+    ],
+    attributes: { display: '6.8" Dynamic AMOLED', camera: '200MP Quad', battery: '5000 mAh' },
+    tags: ['samsung', 'galaxy', 'smartphone', 'mobile', '5g', 'flagship', 'android'],
+    ratingAvg: 4.9,
+    reviewCount: 48,
+  },
+  {
+    id: 'prod-samsung-buds3',
+    title: 'Samsung Galaxy Buds3 Pro Bluetooth AI Earbuds',
+    slug: 'samsung-galaxy-buds3-pro',
+    description:
+      'Hi-Fi 24-bit audio earbuds with adaptive ANC, Blade Lights, Bluetooth 5.4, and Galaxy AI real-time interpreter.',
+    brand: 'Samsung',
+    pricePaise: 1999900,
+    compareAtPaise: 2199900,
+    sku: 'AUD-SAM-BUDS3',
+    stock: 35,
+    categorySlug: 'audio-headphones',
+    images: [
+      'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=1000&q=80',
+    ],
+    attributes: { anc: true, bluetooth: '5.4', battery: '30 Hours' },
+    tags: ['samsung', 'galaxy', 'earbuds', 'bluetooth', 'wireless', 'audio', 'anc'],
+    ratingAvg: 4.8,
+    reviewCount: 29,
+  },
+  {
+    id: 'prod-spigen-mobilestand',
+    title: 'Spigen OneTap Pro MagSafe Mobile Desk Stand & Charger',
+    slug: 'spigen-onetap-magsafe-mobile-stand',
+    description:
+      'Precision aluminum mobile phone desk stand with 15W fast wireless charging and 360-degree magnetic swivel mount.',
+    brand: 'Spigen',
+    pricePaise: 349900,
+    compareAtPaise: 429900,
+    sku: 'DSK-SPG-MSTAND',
+    stock: 42,
+    categorySlug: 'desk-studio-gear',
+    images: [
+      'https://images.unsplash.com/photo-1586105251261-72a756497a11?auto=format&fit=crop&w=1000&q=80',
+    ],
+    attributes: { output: '15W Fast Charge', material: 'Aluminum', compatibility: 'Universal Mobile' },
+    tags: ['mobile', 'stand', 'magsafe', 'phone', 'charger', 'desk'],
+    ratingAvg: 4.7,
+    reviewCount: 15,
   },
 ];
 

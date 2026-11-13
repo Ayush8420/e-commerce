@@ -106,7 +106,12 @@ export function getProductIndexDefinition() {
         stock: { type: 'integer' },
         isActive: { type: 'boolean' },
         images: { type: 'keyword', index: false },
-        tags: { type: 'keyword' },
+        tags: {
+          type: 'text',
+          fields: {
+            keyword: { type: 'keyword' },
+          },
+        },
         ratingAvg: { type: 'float' },
         reviewCount: { type: 'integer' },
         categoryId: { type: 'keyword' },
@@ -289,20 +294,42 @@ export class OpenSearchService implements OnModuleInit {
         must.push({
           bool: {
             should: [
+              // 1. Exact phrase boost (highest priority)
+              {
+                match_phrase: {
+                  title: {
+                    query: queryText,
+                    boost: 10,
+                  },
+                },
+              },
+              // 2. Exact multi-field token match
               {
                 multi_match: {
                   query: queryText,
-                  fields: ['title^4', 'brand^3', 'categoryName^2', 'tags^2', 'description'],
-                  fuzziness: 'AUTO',
-                  prefix_length: 1,
+                  fields: ['title^5', 'brand^4', 'tags^3', 'categoryName^2'],
+                  type: 'best_fields',
+                  boost: 4,
                 },
               },
+              // 3. Phrase prefix for partial keywords
               {
                 match_phrase_prefix: {
                   title: {
                     query: queryText,
                     boost: 3,
                   },
+                },
+              },
+              // 4. Typo-tolerant fuzzy matching (handles "bluetoth", "samsng", "mobail", etc.)
+              {
+                multi_match: {
+                  query: queryText,
+                  fields: ['title^4', 'brand^4', 'categoryName^2', 'tags^3', 'description'],
+                  fuzziness: 'AUTO',
+                  prefix_length: 0,
+                  max_expansions: 50,
+                  operator: 'or',
                 },
               },
             ],
@@ -313,7 +340,7 @@ export class OpenSearchService implements OnModuleInit {
 
       const sort = this.buildOpenSearchSort(params.sort, Boolean(queryText));
 
-      const searchBody = {
+      const searchBody: Record<string, unknown> = {
         from,
         size: limit,
         query: {
@@ -344,12 +371,34 @@ export class OpenSearchService implements OnModuleInit {
         },
       };
 
+      if (queryText) {
+        searchBody.suggest = {
+          text: queryText,
+          simple_phrase: {
+            phrase: {
+              field: 'title',
+              size: 1,
+              real_word_error_likelihood: 0.95,
+              max_errors: 2,
+              gram_size: 2,
+              direct_generator: [
+                {
+                  field: 'title',
+                  suggest_mode: 'always',
+                  min_word_length: 3,
+                },
+              ],
+            },
+          },
+        };
+      }
+
       const response = await this.client.search({
         index: this.indexName,
         body: searchBody as never,
       });
 
-      const body = response.body as {
+      const body = (response.body || response) as {
         took?: number;
         hits: {
           total: { value: number } | number;
@@ -367,11 +416,25 @@ export class OpenSearchService implements OnModuleInit {
           cities?: { buckets: Array<{ key: string; doc_count: number }> };
           price_stats?: { min: number | null; max: number | null };
         };
+        suggest?: {
+          simple_phrase?: Array<{
+            options?: Array<{ text: string; score?: number }>;
+          }>;
+        };
       };
 
       const total =
         typeof body.hits.total === 'number' ? body.hits.total : (body.hits.total?.value ?? 0);
-      const items = body.hits.hits.map((hit) => hit._source);
+      const items = (body.hits.hits || []).map((hit) => hit._source);
+
+      let didYouMean: string | undefined;
+      const suggestOptions = body.suggest?.simple_phrase?.[0]?.options;
+      if (suggestOptions && suggestOptions.length > 0) {
+        const topSuggestion = suggestOptions[0].text;
+        if (topSuggestion && topSuggestion.toLowerCase() !== queryText?.toLowerCase()) {
+          didYouMean = topSuggestion;
+        }
+      }
 
       const categoryBuckets: SearchFacetBucket[] = (
         body.aggregations?.categories?.buckets ?? []
@@ -405,6 +468,7 @@ export class OpenSearchService implements OnModuleInit {
         totalPages: Math.max(1, Math.ceil(total / limit)),
         searchEngine: 'opensearch',
         tookMs: body.took ?? 1,
+        didYouMean,
         facets: {
           categories: categoryBuckets,
           brands: brandBuckets,
@@ -437,20 +501,40 @@ export class OpenSearchService implements OnModuleInit {
           query: {
             bool: {
               filter: [{ term: { isActive: true } }],
-              must: [
+              should: [
                 {
                   multi_match: {
                     query: trimmed,
-                    fields: ['title.autocomplete^3', 'brand^2', 'categoryName'],
+                    fields: ['title.autocomplete^5', 'brand.keyword^3', 'tags^3'],
+                  },
+                },
+                {
+                  match_phrase_prefix: {
+                    title: {
+                      query: trimmed,
+                      boost: 4,
+                    },
+                  },
+                },
+                {
+                  multi_match: {
+                    query: trimmed,
+                    fields: ['title^4', 'brand^4', 'categoryName^2', 'tags^3'],
+                    fuzziness: 'AUTO',
+                    prefix_length: 0,
+                    operator: 'or',
                   },
                 },
               ],
+              minimum_should_match: 1,
             },
           },
         },
       });
-      const hits = (response.body as { hits: { hits: Array<{ _source: ProductDocument }> } }).hits
-        .hits;
+      const body = (response.body || response) as {
+        hits?: { hits?: Array<{ _source: ProductDocument }> };
+      };
+      const hits = body.hits?.hits ?? [];
       return hits.map((h) => ({
         id: h._source.id,
         title: h._source.title,

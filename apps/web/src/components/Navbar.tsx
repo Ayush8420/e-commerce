@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { formatInrFromPaise } from '@ecommerce/shared';
 import {
   Activity,
+  ArrowRight,
   Check,
   ChevronDown,
   LayoutDashboard,
@@ -16,6 +17,8 @@ import {
   ShoppingBag,
   Sparkles,
   User as UserIcon,
+  X,
+  Zap,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { useStore } from './providers/StoreProvider';
@@ -146,46 +149,78 @@ export function Navbar() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
-              placeholder="Search Sony, Keychron, smart lamps, GaN chargers..."
-              className="w-full rounded-full border border-stone-200 bg-stone-50 py-2 pl-10 pr-20 text-sm text-gray-900 placeholder:text-stone-400 focus:border-gray-900 focus:bg-white focus:outline-none"
+              placeholder="Search Bluetooth, Samsung, Sony, Keychron, chargers..."
+              className="w-full rounded-full border border-stone-200 bg-stone-50 py-2 pl-10 pr-24 text-sm text-gray-900 placeholder:text-stone-400 focus:border-gray-900 focus:bg-white focus:outline-none transition-colors"
             />
+            {query.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery('');
+                  setSuggestions([]);
+                  setShowDropdown(false);
+                }}
+                className="absolute right-16 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-1 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button
               type="submit"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full bg-gray-900 px-3.5 py-1 text-xs font-medium text-white hover:bg-gray-800"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full bg-gray-900 px-3.5 py-1 text-xs font-medium text-white hover:bg-gray-800 cursor-pointer"
             >
               Search
             </button>
           </form>
 
           {showDropdown && suggestions.length > 0 && (
-            <div className="absolute left-0 right-0 top-full mt-2 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl">
-              {suggestions.map((item) => (
-                <Link
-                  key={item.id}
-                  href={`/products/${item.slug}`}
-                  onClick={() => setShowDropdown(false)}
-                  className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-stone-50"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    {item.image ? (
-                      <img
-                        src={item.image}
-                        alt={item.title}
-                        className="h-10 w-10 rounded-lg object-cover bg-stone-100 shrink-0"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded-lg bg-stone-100 shrink-0" />
-                    )}
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-gray-900">{item.title}</p>
-                      <p className="text-xs text-stone-500">{item.brand}</p>
+            <div className="absolute left-0 right-0 top-full mt-2 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="flex items-center justify-between border-b border-stone-100 bg-stone-50/80 px-4 py-2 text-[11px] font-semibold text-stone-500">
+                <span className="flex items-center gap-1.5">
+                  <Zap className="h-3.5 w-3.5 text-emerald-600" /> OpenSearch Live Matches
+                </span>
+                <span className="text-[10px] text-stone-400">Press Enter to search all</span>
+              </div>
+              <div className="divide-y divide-stone-100 max-h-80 overflow-y-auto">
+                {suggestions.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/products/${item.slug}`}
+                    onClick={() => setShowDropdown(false)}
+                    className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-stone-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {item.image ? (
+                        <img
+                          src={item.image}
+                          alt={item.title}
+                          className="h-10 w-10 rounded-lg object-cover bg-stone-100 shrink-0"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-lg bg-stone-100 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">{item.title}</p>
+                        <p className="text-xs text-stone-500">{item.brand}</p>
+                      </div>
                     </div>
-                  </div>
-                  <span className="shrink-0 font-mono text-xs font-semibold text-gray-900">
-                    {formatInrFromPaise(item.pricePaise)}
-                  </span>
-                </Link>
-              ))}
+                    <span className="shrink-0 font-mono text-xs font-bold text-gray-900">
+                      {formatInrFromPaise(item.pricePaise)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDropdown(false);
+                  router.push(`/products?q=${encodeURIComponent(query.trim())}`);
+                }}
+                className="flex w-full items-center justify-between border-t border-stone-100 bg-stone-50/90 px-4 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50/80 transition-colors cursor-pointer"
+              >
+                <span>View all search results for &ldquo;{query.trim()}&rdquo;</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
             </div>
           )}
         </div>
