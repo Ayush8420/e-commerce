@@ -1,16 +1,18 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { formatInrFromPaise, NotificationEmailEventPayload } from '@ecommerce/shared';
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 
 @Injectable()
-export class MailerService {
+export class MailerService implements OnModuleInit {
   private readonly logger = new Logger(MailerService.name);
   private readonly transporter: Transporter;
   private readonly fromAddress: string;
   private readonly frontendUrl: string;
   private readonly credentialsConfigured: boolean;
+  private isSmtpHealthy = false;
+  private lastVerifyTime = 0;
 
   constructor(@Inject(ConfigService) private readonly config: ConfigService) {
     const service = this.config.get<string>('SMTP_SERVICE', '').trim();
@@ -71,16 +73,39 @@ export class MailerService {
     });
   }
 
-  async verifyConnection(): Promise<boolean> {
+  onModuleInit(): void {
+    if (process.env.SKIP_INFRA_BOOT === 'true') {
+      return;
+    }
+    // Verify SMTP connection in background once at boot without blocking startup
+    void this.checkConnectionAsync();
+  }
+
+  private async checkConnectionAsync(): Promise<boolean> {
     if (!this.credentialsConfigured) {
+      this.isSmtpHealthy = false;
       return false;
     }
     try {
       await this.transporter.verify();
-      return true;
+      this.isSmtpHealthy = true;
     } catch {
+      this.isSmtpHealthy = false;
+    }
+    this.lastVerifyTime = Date.now();
+    return this.isSmtpHealthy;
+  }
+
+  async verifyConnection(): Promise<boolean> {
+    if (!this.credentialsConfigured) {
       return false;
     }
+    const now = Date.now();
+    // Non-blocking: returns cached status instantly, refreshes in background if older than 5 minutes
+    if (now - this.lastVerifyTime > 300000) {
+      void this.checkConnectionAsync();
+    }
+    return this.isSmtpHealthy;
   }
 
   renderTemplate(event: NotificationEmailEventPayload): { html: string; text: string } {
