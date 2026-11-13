@@ -156,6 +156,10 @@ describe('OrdersService checkout', () => {
       product: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
+      inventory: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUnique: vi.fn().mockResolvedValue({ quantity: 10 }),
+      },
       promoCode: {
         findUnique: vi.fn().mockResolvedValue({
           id: 'promo_1',
@@ -183,6 +187,14 @@ describe('OrdersService checkout', () => {
     };
 
     const prismaMock = {
+      store: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'store_blr_1',
+          name: 'AetherMart Bengaluru Hub',
+          city: 'Bengaluru',
+        }),
+      },
       cart: {
         findUnique: vi.fn().mockResolvedValue({
           id: 'cart_1',
@@ -347,10 +359,15 @@ describe('AuthService, Notifications & CatalogConsumer', () => {
   it('routes catalog.events to OpenSearch sync or delete', async () => {
     const syncProductById = vi.fn().mockResolvedValue(undefined);
     const deleteProduct = vi.fn().mockResolvedValue(undefined);
+    const idempotencyMock = {
+      isEventProcessed: vi.fn().mockResolvedValue(false),
+      markEventProcessed: vi.fn().mockResolvedValue(true),
+    };
     const consumer = new CatalogConsumer(
       { registerConsumer: vi.fn() } as never,
       { syncProductById } as never,
       { deleteProduct } as never,
+      idempotencyMock as never,
     );
 
     await consumer.handleCatalogEvent({

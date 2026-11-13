@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductDocument } from '@ecommerce/shared';
-import { Category, Product } from '@prisma/client';
+import { Category, Inventory, Product, Store } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OpenSearchService } from './opensearch.service';
 
@@ -13,7 +13,18 @@ export class CatalogSyncService {
     @Inject(OpenSearchService) private readonly openSearch: OpenSearchService,
   ) {}
 
-  toProductDocument(product: Product & { category: Category }): ProductDocument {
+  toProductDocument(
+    product: Product & {
+      category: Category;
+      inventories?: Array<Inventory & { store: Store }>;
+    },
+  ): ProductDocument {
+    const activeInventories = (product.inventories ?? []).filter((inv) => inv.quantity > 0);
+    const availableCities = Array.from(
+      new Set(activeInventories.map((inv) => inv.store.city.toLowerCase())),
+    );
+    const storesWithStock = activeInventories.map((inv) => inv.store.code);
+
     return {
       id: product.id,
       title: product.title,
@@ -33,6 +44,8 @@ export class CatalogSyncService {
       categoryId: product.categoryId,
       categoryName: product.category.name,
       categorySlug: product.category.slug,
+      availableCities,
+      storesWithStock,
       createdAt: product.createdAt.toISOString(),
       updatedAt: product.updatedAt.toISOString(),
     };
@@ -41,7 +54,12 @@ export class CatalogSyncService {
   async syncProductById(productId: string): Promise<void> {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
-      include: { category: true },
+      include: {
+        category: true,
+        inventories: {
+          include: { store: true },
+        },
+      },
     });
 
     if (!product || !product.isActive) {
@@ -57,7 +75,12 @@ export class CatalogSyncService {
   async reindexAllProducts(): Promise<{ indexed: number }> {
     const products = await this.prisma.product.findMany({
       where: { isActive: true },
-      include: { category: true },
+      include: {
+        category: true,
+        inventories: {
+          include: { store: true },
+        },
+      },
     });
     const docs = products.map((p) => this.toProductDocument(p));
     const indexed = await this.openSearch.bulkIndexProducts(docs);

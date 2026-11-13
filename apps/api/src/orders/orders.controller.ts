@@ -8,6 +8,16 @@ import { OrdersService } from './orders.service';
 export class OrdersController {
   constructor(@Inject(OrdersService) private readonly ordersService: OrdersService) {}
 
+  @Get('stores')
+  listStores() {
+    return this.ordersService.listStores();
+  }
+
+  @Get('stores/inventory/:productId')
+  getProductStoreInventory(@Param('productId') productId: string) {
+    return this.ordersService.getProductStoreInventory(productId);
+  }
+
   @Post('orders/checkout')
   @UseGuards(JwtAuthGuard)
   checkout(@CurrentUser() user: AuthenticatedUser, @Body() dto: CheckoutDto) {

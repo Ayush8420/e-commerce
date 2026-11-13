@@ -90,6 +90,10 @@ export class CatalogService {
         where: { slug },
         include: {
           category: true,
+          inventories: {
+            include: { store: true },
+            orderBy: { store: { city: 'asc' } },
+          },
           reviews: {
             orderBy: { createdAt: 'desc' },
             include: {

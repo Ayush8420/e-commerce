@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ProductDocument, SearchFacetBucket, SearchResponse } from '@ecommerce/shared';
 import { Client } from '@opensearch-project/opensearch';
 import { Prisma } from '@prisma/client';
+import { resolveCertContent } from '../kafka/kafka.service';
 import { buildDemoProductDocuments } from '../catalog/demo-catalog.data';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -10,6 +11,8 @@ export interface SearchQueryInput {
   q?: string;
   category?: string;
   brand?: string;
+  city?: string;
+  storeId?: string;
   minPricePaise?: number;
   maxPricePaise?: number;
   minRating?: number;
@@ -17,6 +20,110 @@ export interface SearchQueryInput {
   sort?: 'relevance' | 'price_asc' | 'price_desc' | 'rating_desc' | 'newest';
   page?: number;
   limit?: number;
+}
+
+export function buildOpenSearchClientOptions(configReader: {
+  get: <T = string>(key: string, defaultValue?: T) => T | undefined;
+}) {
+  const node = configReader.get<string>('OPENSEARCH_NODE', 'http://localhost:9200') || 'http://localhost:9200';
+  const username = (configReader.get<string>('OPENSEARCH_USERNAME', '') || '').trim();
+  const password = (configReader.get<string>('OPENSEARCH_PASSWORD', '') || '').trim();
+  const caCert = resolveCertContent(
+    configReader.get<string>('OPENSEARCH_CA_CERT'),
+    configReader.get<string>('OPENSEARCH_CA_PATH'),
+  );
+  const rejectUnauthorized =
+    configReader.get<string>('OPENSEARCH_REJECT_UNAUTHORIZED', 'true') !== 'false';
+
+  const isHttps = node.startsWith('https://');
+  const ssl: Record<string, unknown> = {};
+  if (isHttps || caCert) {
+    ssl.rejectUnauthorized = rejectUnauthorized;
+    if (caCert) {
+      ssl.ca = caCert;
+    }
+  }
+
+  return {
+    node,
+    ...(username && password ? { auth: { username, password } } : {}),
+    ...(Object.keys(ssl).length > 0 ? { ssl } : {}),
+  };
+}
+
+export function getProductIndexDefinition() {
+  return {
+    settings: {
+      number_of_shards: 1,
+      number_of_replicas: 0,
+      analysis: {
+        filter: {
+          autocomplete_filter: {
+            type: 'edge_ngram',
+            min_gram: 2,
+            max_gram: 15,
+          },
+        },
+        analyzer: {
+          autocomplete_index: {
+            type: 'custom',
+            tokenizer: 'standard',
+            filter: ['lowercase', 'autocomplete_filter'],
+          },
+          autocomplete_search: {
+            type: 'custom',
+            tokenizer: 'standard',
+            filter: ['lowercase'],
+          },
+        },
+      },
+    },
+    mappings: {
+      properties: {
+        id: { type: 'keyword' },
+        title: {
+          type: 'text',
+          fields: {
+            keyword: { type: 'keyword', ignore_above: 256 },
+            autocomplete: {
+              type: 'text',
+              analyzer: 'autocomplete_index',
+              search_analyzer: 'autocomplete_search',
+            },
+          },
+        },
+        slug: { type: 'keyword' },
+        description: { type: 'text' },
+        brand: {
+          type: 'text',
+          fields: {
+            keyword: { type: 'keyword', ignore_above: 128 },
+          },
+        },
+        pricePaise: { type: 'integer' },
+        compareAtPaise: { type: 'integer' },
+        sku: { type: 'keyword' },
+        stock: { type: 'integer' },
+        isActive: { type: 'boolean' },
+        images: { type: 'keyword', index: false },
+        tags: { type: 'keyword' },
+        ratingAvg: { type: 'float' },
+        reviewCount: { type: 'integer' },
+        categoryId: { type: 'keyword' },
+        categoryName: {
+          type: 'text',
+          fields: {
+            keyword: { type: 'keyword', ignore_above: 128 },
+          },
+        },
+        categorySlug: { type: 'keyword' },
+        availableCities: { type: 'keyword' },
+        storesWithStock: { type: 'keyword' },
+        createdAt: { type: 'date' },
+        updatedAt: { type: 'date' },
+      },
+    },
+  };
 }
 
 @Injectable()
@@ -30,15 +137,9 @@ export class OpenSearchService implements OnModuleInit {
     @Inject(ConfigService) private readonly config: ConfigService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
   ) {
-    const node = this.config.get<string>('OPENSEARCH_NODE', 'http://localhost:9200');
-    const username = this.config.get<string>('OPENSEARCH_USERNAME', '');
-    const password = this.config.get<string>('OPENSEARCH_PASSWORD', '');
+    const clientOptions = buildOpenSearchClientOptions(this.config);
     this.indexName = this.config.get<string>('OPENSEARCH_PRODUCTS_INDEX', 'products_v1');
-
-    this.client = new Client({
-      node,
-      ...(username && password ? { auth: { username, password } } : {}),
-    });
+    this.client = new Client(clientOptions);
   }
 
   onModuleInit(): void {
@@ -69,80 +170,21 @@ export class OpenSearchService implements OnModuleInit {
     if (!existsRes.body) {
       await this.client.indices.create({
         index: this.indexName,
-        body: {
-          settings: {
-            number_of_shards: 1,
-            number_of_replicas: 0,
-            analysis: {
-              filter: {
-                autocomplete_filter: {
-                  type: 'edge_ngram',
-                  min_gram: 2,
-                  max_gram: 15,
-                },
-              },
-              analyzer: {
-                autocomplete_index: {
-                  type: 'custom',
-                  tokenizer: 'standard',
-                  filter: ['lowercase', 'autocomplete_filter'],
-                },
-                autocomplete_search: {
-                  type: 'custom',
-                  tokenizer: 'standard',
-                  filter: ['lowercase'],
-                },
-              },
-            },
-          },
-          mappings: {
-            properties: {
-              id: { type: 'keyword' },
-              title: {
-                type: 'text',
-                fields: {
-                  keyword: { type: 'keyword', ignore_above: 256 },
-                  autocomplete: {
-                    type: 'text',
-                    analyzer: 'autocomplete_index',
-                    search_analyzer: 'autocomplete_search',
-                  },
-                },
-              },
-              slug: { type: 'keyword' },
-              description: { type: 'text' },
-              brand: {
-                type: 'text',
-                fields: {
-                  keyword: { type: 'keyword', ignore_above: 128 },
-                },
-              },
-              pricePaise: { type: 'integer' },
-              compareAtPaise: { type: 'integer' },
-              sku: { type: 'keyword' },
-              stock: { type: 'integer' },
-              isActive: { type: 'boolean' },
-              images: { type: 'keyword', index: false },
-              tags: { type: 'keyword' },
-              ratingAvg: { type: 'float' },
-              reviewCount: { type: 'integer' },
-              categoryId: { type: 'keyword' },
-              categoryName: {
-                type: 'text',
-                fields: {
-                  keyword: { type: 'keyword', ignore_above: 128 },
-                },
-              },
-              categorySlug: { type: 'keyword' },
-              createdAt: { type: 'date' },
-              updatedAt: { type: 'date' },
-            },
-          },
-        },
+        body: getProductIndexDefinition() as never,
       });
       this.logger.log(`Created OpenSearch index "${this.indexName}"`);
     }
     this.indexEnsured = true;
+  }
+
+  async recreateIndex(): Promise<void> {
+    const existsRes = await this.client.indices.exists({ index: this.indexName });
+    if (existsRes.body) {
+      await this.client.indices.delete({ index: this.indexName });
+      this.logger.log(`Deleted existing index "${this.indexName}"`);
+    }
+    this.indexEnsured = false;
+    await this.ensureIndex();
   }
 
   async upsertProduct(doc: ProductDocument): Promise<void> {
@@ -226,6 +268,20 @@ export class OpenSearchService implements OnModuleInit {
       if (params.inStock) {
         filter.push({ range: { stock: { gt: 0 } } });
       }
+      if (params.city) {
+        const cities = params.city
+          .split(',')
+          .map((c) => c.trim().toLowerCase())
+          .filter(Boolean);
+        if (cities.length === 1) {
+          filter.push({ term: { availableCities: cities[0] } });
+        } else if (cities.length > 1) {
+          filter.push({ terms: { availableCities: cities } });
+        }
+      }
+      if (params.storeId) {
+        filter.push({ term: { storesWithStock: params.storeId } });
+      }
 
       const must: Array<Record<string, unknown>> = [];
       const queryText = params.q?.trim();
@@ -279,6 +335,9 @@ export class OpenSearchService implements OnModuleInit {
           brands: {
             terms: { field: 'brand.keyword', size: 30 },
           },
+          cities: {
+            terms: { field: 'availableCities', size: 20 },
+          },
           price_stats: {
             stats: { field: 'pricePaise' },
           },
@@ -291,6 +350,7 @@ export class OpenSearchService implements OnModuleInit {
       });
 
       const body = response.body as {
+        took?: number;
         hits: {
           total: { value: number } | number;
           hits: Array<{ _source: ProductDocument }>;
@@ -304,6 +364,7 @@ export class OpenSearchService implements OnModuleInit {
             }>;
           };
           brands?: { buckets: Array<{ key: string; doc_count: number }> };
+          cities?: { buckets: Array<{ key: string; doc_count: number }> };
           price_stats?: { min: number | null; max: number | null };
         };
       };
@@ -328,6 +389,14 @@ export class OpenSearchService implements OnModuleInit {
         }),
       );
 
+      const cityBuckets: SearchFacetBucket[] = (body.aggregations?.cities?.buckets ?? []).map(
+        (bucket) => ({
+          key: bucket.key,
+          label: bucket.key.charAt(0).toUpperCase() + bucket.key.slice(1),
+          count: bucket.doc_count,
+        }),
+      );
+
       return {
         items,
         total,
@@ -335,9 +404,11 @@ export class OpenSearchService implements OnModuleInit {
         limit,
         totalPages: Math.max(1, Math.ceil(total / limit)),
         searchEngine: 'opensearch',
+        tookMs: body.took ?? 1,
         facets: {
           categories: categoryBuckets,
           brands: brandBuckets,
+          cities: cityBuckets,
           minPricePaise: Math.round(body.aggregations?.price_stats?.min ?? 0),
           maxPricePaise: Math.round(body.aggregations?.price_stats?.max ?? 0),
         },
@@ -490,6 +561,15 @@ export class OpenSearchService implements OnModuleInit {
     if (params.inStock) {
       where.stock = { gt: 0 };
     }
+    if (params.city) {
+      const cityLower = params.city.trim().toLowerCase();
+      where.inventories = {
+        some: {
+          quantity: { gt: 0 },
+          store: { city: { equals: cityLower, mode: 'insensitive' } },
+        },
+      };
+    }
 
     const orderBy: Prisma.ProductOrderByWithRelationInput =
       params.sort === 'price_asc'
@@ -504,7 +584,10 @@ export class OpenSearchService implements OnModuleInit {
       const [rows, total, allMatchingForFacets] = await Promise.all([
         this.prisma.product.findMany({
           where,
-          include: { category: true },
+          include: {
+            category: true,
+            inventories: { include: { store: true } },
+          },
           orderBy,
           skip: (params.page - 1) * params.limit,
           take: params.limit,
@@ -516,12 +599,17 @@ export class OpenSearchService implements OnModuleInit {
             brand: true,
             pricePaise: true,
             category: { select: { slug: true, name: true } },
+            inventories: {
+              where: { quantity: { gt: 0 } },
+              select: { store: { select: { city: true } } },
+            },
           },
         }),
       ]);
 
       const categoryMap = new Map<string, { label: string; count: number }>();
       const brandMap = new Map<string, number>();
+      const cityMap = new Map<string, number>();
       let minPrice = Number.MAX_SAFE_INTEGER;
       let maxPrice = 0;
 
@@ -530,32 +618,41 @@ export class OpenSearchService implements OnModuleInit {
         catEntry.count += 1;
         categoryMap.set(row.category.slug, catEntry);
         brandMap.set(row.brand, (brandMap.get(row.brand) ?? 0) + 1);
+        for (const inv of row.inventories) {
+          const c = inv.store.city.toLowerCase();
+          cityMap.set(c, (cityMap.get(c) ?? 0) + 1);
+        }
         if (row.pricePaise < minPrice) minPrice = row.pricePaise;
         if (row.pricePaise > maxPrice) maxPrice = row.pricePaise;
       }
 
-      const items: ProductDocument[] = rows.map((p) => ({
-        id: p.id,
-        title: p.title,
-        slug: p.slug,
-        description: p.description,
-        brand: p.brand,
-        pricePaise: p.pricePaise,
-        compareAtPaise: p.compareAtPaise,
-        sku: p.sku,
-        stock: p.stock,
-        isActive: p.isActive,
-        images: p.images,
-        attributes: (p.attributes as Record<string, string | number | boolean>) ?? {},
-        tags: p.tags,
-        ratingAvg: p.ratingAvg,
-        reviewCount: p.reviewCount,
-        categoryId: p.categoryId,
-        categoryName: p.category.name,
-        categorySlug: p.category.slug,
-        createdAt: p.createdAt.toISOString(),
-        updatedAt: p.updatedAt.toISOString(),
-      }));
+      const items: ProductDocument[] = rows.map((p) => {
+        const activeInvs = (p.inventories ?? []).filter((i) => i.quantity > 0);
+        return {
+          id: p.id,
+          title: p.title,
+          slug: p.slug,
+          description: p.description,
+          brand: p.brand,
+          pricePaise: p.pricePaise,
+          compareAtPaise: p.compareAtPaise,
+          sku: p.sku,
+          stock: p.stock,
+          isActive: p.isActive,
+          images: p.images,
+          attributes: (p.attributes as Record<string, string | number | boolean>) ?? {},
+          tags: p.tags,
+          ratingAvg: p.ratingAvg,
+          reviewCount: p.reviewCount,
+          categoryId: p.categoryId,
+          categoryName: p.category.name,
+          categorySlug: p.category.slug,
+          availableCities: Array.from(new Set(activeInvs.map((i) => i.store.city.toLowerCase()))),
+          storesWithStock: activeInvs.map((i) => i.store.code),
+          createdAt: p.createdAt.toISOString(),
+          updatedAt: p.updatedAt.toISOString(),
+        };
+      });
 
       return {
         items,
@@ -573,6 +670,11 @@ export class OpenSearchService implements OnModuleInit {
           brands: Array.from(brandMap.entries()).map(([key, count]) => ({
             key,
             label: key,
+            count,
+          })),
+          cities: Array.from(cityMap.entries()).map(([key, count]) => ({
+            key,
+            label: key.charAt(0).toUpperCase() + key.slice(1),
             count,
           })),
           minPricePaise: minPrice === Number.MAX_SAFE_INTEGER ? 0 : minPrice,
@@ -610,6 +712,12 @@ export class OpenSearchService implements OnModuleInit {
       if (params.maxPricePaise !== undefined && p.pricePaise > params.maxPricePaise) return false;
       if (params.minRating !== undefined && p.ratingAvg < params.minRating) return false;
       if (params.inStock && p.stock <= 0) return false;
+      if (params.city) {
+        const cTarget = params.city.trim().toLowerCase();
+        if (!p.availableCities || !p.availableCities.map((c) => c.toLowerCase()).includes(cTarget)) {
+          return false;
+        }
+      }
       return true;
     });
 
@@ -628,6 +736,7 @@ export class OpenSearchService implements OnModuleInit {
 
     const categoryMap = new Map<string, { label: string; count: number }>();
     const brandMap = new Map<string, number>();
+    const cityMap = new Map<string, number>();
     let minPrice = Number.MAX_SAFE_INTEGER;
     let maxPrice = 0;
 
@@ -636,6 +745,9 @@ export class OpenSearchService implements OnModuleInit {
       catEntry.count += 1;
       categoryMap.set(doc.categorySlug, catEntry);
       brandMap.set(doc.brand, (brandMap.get(doc.brand) ?? 0) + 1);
+      for (const city of doc.availableCities ?? []) {
+        cityMap.set(city.toLowerCase(), (cityMap.get(city.toLowerCase()) ?? 0) + 1);
+      }
       if (doc.pricePaise < minPrice) minPrice = doc.pricePaise;
       if (doc.pricePaise > maxPrice) maxPrice = doc.pricePaise;
     }
@@ -651,6 +763,7 @@ export class OpenSearchService implements OnModuleInit {
       limit: params.limit,
       totalPages: Math.max(1, Math.ceil(total / params.limit)),
       searchEngine: 'demo-fallback',
+      tookMs: 1,
       facets: {
         categories: Array.from(categoryMap.entries()).map(([key, v]) => ({
           key,
@@ -660,6 +773,11 @@ export class OpenSearchService implements OnModuleInit {
         brands: Array.from(brandMap.entries()).map(([key, count]) => ({
           key,
           label: key,
+          count,
+        })),
+        cities: Array.from(cityMap.entries()).map(([key, count]) => ({
+          key,
+          label: key.charAt(0).toUpperCase() + key.slice(1),
           count,
         })),
         minPricePaise: minPrice === Number.MAX_SAFE_INTEGER ? 0 : minPrice,

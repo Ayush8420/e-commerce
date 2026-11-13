@@ -1,7 +1,16 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { OutboxStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { KafkaService } from './kafka.service';
+import { SystemActivityService } from '../system/system-activity.service';
 
 export interface EnqueueOutboxParams {
   aggregateType: string;
@@ -25,6 +34,9 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(KafkaService) private readonly kafka: KafkaService,
+    @Optional()
+    @Inject(forwardRef(() => SystemActivityService))
+    private readonly activity?: SystemActivityService,
   ) {}
 
   onModuleInit(): void {
@@ -154,6 +166,17 @@ export class OutboxService implements OnModuleInit, OnModuleDestroy {
               status: OutboxStatus.PUBLISHED,
               publishedAt: new Date(),
               lastError: null,
+            },
+          });
+          this.activity?.record({
+            service: 'Kafka',
+            step: 'kafka_event_published',
+            title: `Outbox relayed ${event.eventType} to Kafka (${event.topic})`,
+            details: {
+              topic: event.topic,
+              aggregateType: event.aggregateType,
+              aggregateId: event.aggregateId,
+              eventType: event.eventType,
             },
           });
           publishedCount += 1;

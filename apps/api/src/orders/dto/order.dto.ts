@@ -51,6 +51,14 @@ export class CheckoutDto {
   @IsOptional()
   @IsString()
   promoCode?: string;
+
+  @IsOptional()
+  @IsString()
+  storeId?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
 }
 
 export class RetryUpiDto {

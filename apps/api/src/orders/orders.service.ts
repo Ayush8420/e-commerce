@@ -12,7 +12,9 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { OutboxService } from '../kafka/outbox.service';
 import { PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { Optional } from '@nestjs/common';
 import { CheckoutDto, RetryUpiDto } from './dto/order.dto';
+import { SystemActivityService } from '../system/system-activity.service';
 
 const FREE_SHIPPING_THRESHOLD_PAISE = 99900;
 const STANDARD_SHIPPING_PAISE = 7900;
@@ -24,6 +26,7 @@ export class OrdersService {
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(PaymentsService) private readonly payments: PaymentsService,
     @Inject(AnalyticsService) private readonly analytics: AnalyticsService,
+    @Optional() @Inject(SystemActivityService) private readonly activity?: SystemActivityService,
   ) {}
 
   async checkout(userId: string, dto: CheckoutDto) {
@@ -41,6 +44,34 @@ export class OrdersService {
       throw new BadRequestException('Your cart is empty');
     }
 
+    const storeTargetCity = dto.city?.trim() || dto.shippingAddress?.city?.trim();
+    let selectedStore: { id: string; name: string; city: string } | null = null;
+
+    if (dto.storeId?.trim() && this.prisma.store) {
+      selectedStore = await this.prisma.store.findUnique({
+        where: { id: dto.storeId.trim() },
+        select: { id: true, name: true, city: true },
+      });
+    }
+
+    if (!selectedStore && storeTargetCity && this.prisma.store) {
+      selectedStore = await this.prisma.store.findFirst({
+        where: {
+          city: { equals: storeTargetCity, mode: 'insensitive' },
+          isActive: true,
+        },
+        select: { id: true, name: true, city: true },
+      });
+    }
+
+    if (!selectedStore && this.prisma.store) {
+      selectedStore = await this.prisma.store.findFirst({
+        where: { isActive: true },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, name: true, city: true },
+      });
+    }
+
     const subtotalPaise = activeCartItems.reduce(
       (sum, item) => sum + item.product.pricePaise * item.quantity,
       0,
@@ -51,6 +82,29 @@ export class OrdersService {
 
     const createdResult = await this.prisma.$transaction(async (tx) => {
       for (const item of activeCartItems) {
+        // Atomic conditional UPDATE on store inventory
+        if (selectedStore && (tx as any).inventory) {
+          const updatedInv = await (tx as any).inventory.updateMany({
+            where: {
+              productId: item.productId,
+              storeId: selectedStore.id,
+              quantity: { gte: item.quantity },
+            },
+            data: {
+              quantity: { decrement: item.quantity },
+            },
+          });
+          if (updatedInv.count !== 1) {
+            const currentInv = await (tx as any).inventory.findUnique({
+              where: { productId_storeId: { productId: item.productId, storeId: selectedStore.id } },
+            });
+            throw new BadRequestException(
+              `Insufficient stock for "${item.product.title}" at ${selectedStore.name} (${selectedStore.city}). Available: ${currentInv?.quantity ?? 0}`,
+            );
+          }
+        }
+
+        // Atomic conditional UPDATE on global product stock
         const updated = await tx.product.updateMany({
           where: {
             id: item.productId,
@@ -123,6 +177,8 @@ export class OrdersService {
         data: {
           orderNumber,
           userId,
+          storeId: selectedStore?.id ?? null,
+          city: selectedStore?.city ?? null,
           status: OrderStatus.PENDING_PAYMENT,
           paymentMethod: dto.paymentMethod,
           paymentStatus: PaymentStatus.PENDING,
@@ -159,6 +215,7 @@ export class OrdersService {
         include: {
           items: true,
           payments: true,
+          store: true,
         },
       });
 
@@ -181,6 +238,8 @@ export class OrdersService {
             userId: order.userId,
             status: order.status,
             totalPaise: order.totalPaise,
+            storeId: selectedStore?.id ?? null,
+            city: selectedStore?.city ?? null,
             occurredAt: nowIso,
           },
         },
@@ -193,6 +252,9 @@ export class OrdersService {
             eventId: randomUUID(),
             type: 'product.stock_changed',
             productId: item.productId,
+            storeId: selectedStore?.id ?? null,
+            city: selectedStore?.city ?? null,
+            quantity: item.quantity,
             occurredAt: nowIso,
           },
         })),
@@ -210,6 +272,18 @@ export class OrdersService {
     });
 
     this.outbox.triggerFlush();
+    this.activity?.record({
+      service: 'PostgreSQL',
+      step: 'order_saved_postgres',
+      title: `Order ${createdResult.orderNumber} committed to PostgreSQL`,
+      details: {
+        orderId: createdResult.id,
+        orderNumber: createdResult.orderNumber,
+        totalPaise: createdResult.totalPaise,
+        storeId: createdResult.storeId,
+        city: createdResult.city,
+      },
+    });
     void this.analytics.track({
       type: 'checkout.started',
       userId,
@@ -377,6 +451,12 @@ export class OrdersService {
     const cancelled = await this.prisma.$transaction(async (tx) => {
       if (shouldRestoreStock) {
         for (const item of order.items) {
+          if (order.storeId) {
+            await tx.inventory.updateMany({
+              where: { productId: item.productId, storeId: order.storeId },
+              data: { quantity: { increment: item.quantity } },
+            });
+          }
           await tx.product.update({
             where: { id: item.productId },
             data: { stock: { increment: item.quantity } },
@@ -493,6 +573,21 @@ export class OrdersService {
     const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
     const rand = Math.floor(100000 + Math.random() * 900000);
     return `ORD-${datePart}-${rand}`;
+  }
+
+  async listStores() {
+    return this.prisma.store.findMany({
+      where: { isActive: true },
+      orderBy: [{ city: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async getProductStoreInventory(productId: string) {
+    return this.prisma.inventory.findMany({
+      where: { productId },
+      include: { store: true },
+      orderBy: { store: { city: 'asc' } },
+    });
   }
 }
 

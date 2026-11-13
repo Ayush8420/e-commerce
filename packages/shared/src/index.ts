@@ -52,6 +52,9 @@ export interface ProductDocument {
   categoryId: string;
   categoryName: string;
   categorySlug: string;
+  availableCities: string[];
+  storesWithStock: string[];
+  storeStock?: Record<string, number>;
   createdAt: string;
   updatedAt: string;
 }
@@ -69,12 +72,33 @@ export interface SearchResponse {
   limit: number;
   totalPages: number;
   searchEngine: 'opensearch' | 'postgres-fallback' | 'demo-fallback';
+  tookMs?: number;
   facets: {
     categories: SearchFacetBucket[];
     brands: SearchFacetBucket[];
+    cities: SearchFacetBucket[];
     minPricePaise: number;
     maxPricePaise: number;
   };
+}
+
+export interface StoreDto {
+  id: string;
+  name: string;
+  code: string;
+  city: string;
+  state: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  isActive: boolean;
+}
+
+export interface StoreInventoryDto {
+  storeId: string;
+  storeName: string;
+  city: string;
+  quantity: number;
 }
 
 export interface CatalogEventPayload {
@@ -84,8 +108,13 @@ export interface CatalogEventPayload {
   | 'product.updated'
   | 'product.deleted'
   | 'product.stock_changed'
-  | 'product.rating_updated';
+  | 'product.rating_updated'
+  | 'inventory.changed';
   productId: string;
+  storeId?: string;
+  city?: string;
+  quantity?: number;
+  availableCities?: string[];
   occurredAt: string;
 }
 
@@ -98,12 +127,14 @@ export interface OrderEventPayload {
   | 'order.status_updated'
   | 'order.cancelled';
   orderId: string;
-  orderNumber: string;
-  userId: string;
-  status: OrderStatus;
+  orderNumber?: string;
+  userId?: string;
+  status?: string;
   previousStatus?: OrderStatus;
-  totalPaise: number;
-  occurredAt: string;
+  totalPaise?: number;
+  storeId?: string;
+  city?: string;
+  occurredAt?: string;
 }
 
 export interface NotificationEmailEventPayload {

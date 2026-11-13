@@ -4,6 +4,7 @@ import { KafkaService } from '../kafka/kafka.service';
 import { OutboxService } from '../kafka/outbox.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailerService } from './mailer.service';
+import { SystemActivityService } from '../system/system-activity.service';
 
 @Injectable()
 export class NotificationConsumer implements OnModuleInit {
@@ -14,6 +15,9 @@ export class NotificationConsumer implements OnModuleInit {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(MailerService) private readonly mailer: MailerService,
     @Optional() @Inject(OutboxService) private readonly outbox?: OutboxService,
+    @Optional()
+    @Inject(SystemActivityService)
+    private readonly activity?: SystemActivityService,
   ) { }
 
   async onModuleInit(): Promise<void> {
@@ -55,6 +59,16 @@ export class NotificationConsumer implements OnModuleInit {
           subject: event.subject,
           status: 'SENT',
           providerMsgId: result.messageId,
+        },
+      });
+      this.activity?.record({
+        service: 'Email',
+        step: 'email_notification_sent',
+        title: `Sent ${event.type} email to ${event.to}`,
+        details: {
+          recipient: event.to,
+          subject: event.subject,
+          messageId: result.messageId,
         },
       });
     } catch (error) {
