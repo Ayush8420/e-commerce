@@ -4,7 +4,7 @@ import Link from 'next/link';
 export function Footer() {
   return (
     <footer className="mt-20 border-t border-stone-200 bg-white">
-      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:grid-cols-4 sm:px-6">
+      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:grid-cols-5 sm:px-6">
         <div className="sm:col-span-2">
           <h3 className="text-base font-bold text-gray-900">AetherMart</h3>
           <p className="mt-2 max-w-md text-sm text-stone-600">
@@ -27,6 +27,13 @@ export function Footer() {
             <li><Link href="/login" className="hover:text-gray-900">Sign In / Google OAuth</Link></li>
             <li><Link href="/orders" className="hover:text-gray-900">Order History</Link></li>
             <li><Link href="/admin" className="hover:text-gray-900">Admin Console</Link></li>
+          </ul>
+        </div>
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-stone-500">Legal</h4>
+          <ul className="mt-3 space-y-2 text-sm text-stone-700">
+            <li><Link href="/privacy-policy" className="hover:text-gray-900">Privacy Policy</Link></li>
+            <li><Link href="/terms-of-use" className="hover:text-gray-900">Terms of Use</Link></li>
           </ul>
         </div>
       </div>

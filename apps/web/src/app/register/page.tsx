@@ -45,6 +45,17 @@ function RegisterContent() {
         >
           Continue with Google
         </a>
+        <p className="mt-3 text-center text-xs text-stone-500">
+          Review our{' '}
+          <Link href="/privacy-policy" className="font-medium text-indigo-700 underline">
+            Privacy Policy
+          </Link>{' '}
+          and{' '}
+          <Link href="/terms-of-use" className="font-medium text-indigo-700 underline">
+            Terms of Use
+          </Link>
+          .
+        </p>
 
         <div className="my-6 flex items-center gap-3 text-xs text-stone-400">
           <div className="h-px flex-1 bg-stone-200" />
