@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { formatInrFromPaise } from '@ecommerce/shared';
 import {
@@ -17,7 +18,6 @@ import {
   RefreshCw,
   Search,
   ShoppingBag,
-  Sparkles,
   User as UserIcon,
   X,
   Zap,
@@ -100,8 +100,15 @@ export function Navbar() {
     <header className="sticky top-0 z-40 border-b border-stone-200 bg-white/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-900 text-white">
-            <Sparkles className="h-4 w-4" />
+          <div className="h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-stone-200">
+            <Image
+              src="/aethermart-logo.png"
+              alt=""
+              width={36}
+              height={36}
+              priority
+              className="h-full w-full object-cover"
+            />
           </div>
           <div className="leading-tight">
             <span className="block text-base font-bold tracking-tight text-gray-900">

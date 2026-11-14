@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   title: 'AetherMart — Curated Studio & Tech Storefront',
   description:
     'Modern e-commerce built with Next.js, NestJS, PostgreSQL, Apache Kafka, OpenSearch, and UPI checkout.',
+  icons: {
+    icon: '/aethermart-logo.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

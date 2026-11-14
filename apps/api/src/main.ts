@@ -14,7 +14,10 @@ async function bootstrap() {
   const frontendUrl = config.get<string>('FRONTEND_URL', 'http://localhost:3000');
   const allowedOrigins = Array.from(
     new Set([
-      ...frontendUrl.split(',').map((item) => item.trim()).filter(Boolean),
+      ...frontendUrl
+        .split(',')
+        .map((item) => item.trim().replace(/\/+$/, ''))
+        .filter(Boolean),
       'http://localhost:3000',
       'http://127.0.0.1:3000',
     ]),

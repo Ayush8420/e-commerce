@@ -1,12 +1,22 @@
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export function Footer() {
   return (
     <footer className="mt-20 border-t border-stone-200 bg-white">
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:grid-cols-5 sm:px-6">
         <div className="sm:col-span-2">
-          <h3 className="text-base font-bold text-gray-900">AetherMart</h3>
+          <div className="flex items-center gap-2.5">
+            <Image
+              src="/aethermart-logo.png"
+              alt=""
+              width={32}
+              height={32}
+              className="h-8 w-8 rounded-lg border border-stone-200 object-cover"
+            />
+            <h3 className="text-base font-bold text-gray-900">AetherMart</h3>
+          </div>
           <p className="mt-2 max-w-md text-sm text-stone-600">
             Event-driven e-commerce storefront powered by Next.js, NestJS, PostgreSQL + Prisma,
             Apache Kafka outbox streams, OpenSearch faceted discovery, and instant UPI payments.
