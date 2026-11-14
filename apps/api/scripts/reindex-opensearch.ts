@@ -26,7 +26,8 @@ async function main() {
   const shouldRecreate = process.argv.includes('--recreate') || process.argv.includes('-r');
 
   const clientOptions = buildOpenSearchClientOptions(configReader);
-  console.log(`Connecting to OpenSearch at: ${clientOptions.node}`);
+  const nodeForLogs = clientOptions.node.replace(/(https?:\/\/)[^/@]+@/i, '$1[redacted]@');
+  console.log(`Connecting to OpenSearch at: ${nodeForLogs}`);
   console.log(`Target index: ${indexName}`);
 
   const client = new Client(clientOptions);
@@ -129,7 +130,7 @@ async function main() {
     console.log(`\nReindexing complete! Total documents in "${indexName}": ${countRes.body.count}`);
   } catch (error) {
     console.error('\n[Error] Reindexing failed:');
-    console.error(`- OpenSearch Node: ${clientOptions.node}`);
+    console.error(`- OpenSearch Node: ${nodeForLogs}`);
     console.error(`- Reason: ${error instanceof Error ? error.message : String(error)}`);
     console.error('\nPlease verify your Aiven OpenSearch credentials and DATABASE_URL in .env, or if testing locally, ensure Docker OpenSearch is running (npm run infra:up).\n');
     process.exit(1);
